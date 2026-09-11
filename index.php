@@ -7,6 +7,20 @@ $base = appBasePath();
 if ($base && ($path === $base || str_starts_with($path, $base . '/'))) $path = substr($path, strlen($base)) ?: '/';
 $path = '/' . ltrim($path, '/');
 
+// A few shared-hosting setups expose the front controller in the URL (for
+// example, /index.php or /app.index). Treat those addresses as routes instead
+// of returning a 404, including when a route follows the controller filename.
+foreach (['/index.php', '/app.index'] as $controller) {
+    if ($path === $controller) {
+        $path = '/';
+        break;
+    }
+    if (str_starts_with($path, $controller . '/')) {
+        $path = substr($path, strlen($controller)) ?: '/';
+        break;
+    }
+}
+
 switch ($path) {
     case '/': case '/login': requireGuest(); require __DIR__ . '/pages/login.php'; break;
     case '/criar-conta': requireGuest(); require __DIR__ . '/pages/register.php'; break;
