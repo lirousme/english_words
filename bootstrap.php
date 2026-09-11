@@ -22,8 +22,28 @@ function env(string $key, string $default = ''): string
 function appBasePath(): string
 {
     $configured = trim(env('APP_BASE_PATH', ''), '/');
-    $script = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/'));
+    $scriptName = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '/index.php');
+    $script = str_replace('\\', '/', dirname($scriptName));
     $detected = $script === '/' ? '' : rtrim($script, '/');
+
+    // Authentication endpoints are executed directly, so SCRIPT_NAME includes
+    // /api/auth/login.php (or another nested file). Derive the public root from
+    // the path of the executed file relative to this application instead of
+    // redirecting users to /api/auth/dashboard.
+    $appDirectory = realpath(__DIR__);
+    $scriptFile = realpath($_SERVER['SCRIPT_FILENAME'] ?? '');
+    if ($appDirectory !== false && $scriptFile !== false) {
+        $appDirectory = str_replace('\\', '/', $appDirectory);
+        $scriptFile = str_replace('\\', '/', $scriptFile);
+        $directoryPrefix = rtrim($appDirectory, '/') . '/';
+
+        if (str_starts_with($scriptFile, $directoryPrefix)) {
+            $relativeScript = '/' . ltrim(substr($scriptFile, strlen($directoryPrefix)), '/');
+            if (str_ends_with($scriptName, $relativeScript)) {
+                $detected = rtrim(substr($scriptName, 0, -strlen($relativeScript)), '/');
+            }
+        }
+    }
 
     if ($configured === '') return $detected;
 
