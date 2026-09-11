@@ -76,3 +76,38 @@ function pageHeader(string $title): void
 }
 
 function pageFooter(): void { echo '</body></html>'; }
+
+/**
+ * Starts the authenticated application shell.
+ *
+ * Use this pair on every authenticated page so navigation remains consistent
+ * as new areas of the application are added.
+ */
+function appShellHeader(string $title, string $activePage = 'dashboard'): void
+{
+    $user = currentUser() ?? [];
+    $displayName = $user['name'] ?? $user['email'] ?? 'Conta';
+    $initial = strtoupper(substr(trim($displayName), 0, 1) ?: 'S');
+    $dashboardUrl = htmlspecialchars(appUrl('dashboard'), ENT_QUOTES, 'UTF-8');
+    $logoutUrl = htmlspecialchars(appUrl('logout'), ENT_QUOTES, 'UTF-8');
+    $safeName = htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8');
+    $isDashboard = $activePage === 'dashboard';
+
+    pageHeader($title);
+    echo '<a class="skip-link" href="#app-content">Pular para o conteúdo</a>';
+    echo '<div class="app-shell">';
+    echo '<aside class="app-sidebar" aria-label="Navegação principal">';
+    echo '<a class="app-brand" href="' . $dashboardUrl . '"><span aria-hidden="true">◈</span> Subdrill</a>';
+    echo '<nav class="app-nav" aria-label="Áreas do aplicativo">';
+    echo '<a class="app-nav-link' . ($isDashboard ? ' is-active' : '') . '" href="' . $dashboardUrl . '"' . ($isDashboard ? ' aria-current="page"' : '') . '><span aria-hidden="true">⌂</span> Visão geral</a>';
+    echo '</nav>';
+    echo '<div class="sidebar-account"><span class="account-avatar" aria-hidden="true">' . htmlspecialchars($initial, ENT_QUOTES, 'UTF-8') . '</span><span class="account-name">' . $safeName . '</span><a href="' . $logoutUrl . '">Sair</a></div>';
+    echo '</aside><div class="app-main"><header class="app-topbar"><a class="app-brand app-brand-mobile" href="' . $dashboardUrl . '"><span aria-hidden="true">◈</span> Subdrill</a><span>' . $safeName . '</span></header><main class="app-content" id="app-content">';
+}
+
+/** Closes markup opened by appShellHeader(). */
+function appShellFooter(): void
+{
+    echo '</main></div></div>';
+    pageFooter();
+}
