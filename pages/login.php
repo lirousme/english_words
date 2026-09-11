@@ -19,7 +19,7 @@ unset($_SESSION['auth_error'], $_SESSION['login_username']);
       <a class="logo" href="<?= htmlspecialchars(appUrl()) ?>"><span>◈</span> Subdrill</a>
       <div class="form-title"><p class="eyebrow">BEM-VINDO DE VOLTA</p><h2>Entre na sua conta</h2><p>Continue de onde você parou.</p></div>
       <?php if ($error): ?><div class="alert" role="alert"><?= htmlspecialchars($error) ?></div><?php endif; ?>
-      <form action="<?= htmlspecialchars(appUrl('api/auth/login.php')) ?>" method="post" class="login-form">
+      <form action="<?= htmlspecialchars(appUrl('login')) ?>" method="post" class="login-form">
         <input type="hidden" name="csrf" value="<?= htmlspecialchars(csrfToken()) ?>">
         <label>Usuário<input name="username" type="text" autocomplete="username" required maxlength="50" value="<?= htmlspecialchars((string) $username) ?>" placeholder="seu_usuario"></label>
         <label>Senha<input name="password" type="password" autocomplete="current-password" required placeholder="••••••••"></label>
