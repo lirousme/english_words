@@ -86,7 +86,7 @@ function pageFooter(): void { echo '</body></html>'; }
 function appShellHeader(string $title, string $activePage = 'dashboard'): void
 {
     $user = currentUser() ?? [];
-    $displayName = $user['name'] ?? $user['email'] ?? 'Conta';
+    $displayName = $user['username'] ?? 'Conta';
     $initial = strtoupper(substr(trim($displayName), 0, 1) ?: 'S');
     $dashboardUrl = htmlspecialchars(appUrl('dashboard'), ENT_QUOTES, 'UTF-8');
     $logoutUrl = htmlspecialchars(appUrl('logout'), ENT_QUOTES, 'UTF-8');
