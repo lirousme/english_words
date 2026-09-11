@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 pageHeader('Criar conta');
 $error = $_SESSION['auth_error'] ?? '';
-$old = $_SESSION['register_old'] ?? ['name' => '', 'email' => ''];
+$old = $_SESSION['register_old'] ?? ['username' => ''];
 unset($_SESSION['auth_error'], $_SESSION['register_old']);
 ?>
 <main class="login-shell">
@@ -21,10 +21,8 @@ unset($_SESSION['auth_error'], $_SESSION['register_old']);
       <?php if ($error): ?><div class="alert" role="alert"><?= htmlspecialchars($error) ?></div><?php endif; ?>
       <form action="<?= htmlspecialchars(appUrl('api/auth/register.php')) ?>" method="post" class="login-form">
         <input type="hidden" name="csrf" value="<?= htmlspecialchars(csrfToken()) ?>">
-        <label>Nome<input name="name" type="text" autocomplete="name" required maxlength="120" value="<?= htmlspecialchars((string) $old['name']) ?>" placeholder="Seu nome"></label>
-        <label>E-mail<input name="email" type="email" autocomplete="email" required maxlength="254" value="<?= htmlspecialchars((string) $old['email']) ?>" placeholder="voce@exemplo.com"></label>
+        <label>Usuário<input name="username" type="text" autocomplete="username" required maxlength="50" value="<?= htmlspecialchars((string) $old['username']) ?>" placeholder="seu_usuario"></label>
         <label>Senha<input name="password" type="password" autocomplete="new-password" required minlength="8" placeholder="Mínimo de 8 caracteres"></label>
-        <label>Confirme sua senha<input name="password_confirmation" type="password" autocomplete="new-password" required minlength="8" placeholder="Repita sua senha"></label>
         <button class="button" type="submit">Criar conta <span>→</span></button>
       </form>
       <p class="help">Já tem uma conta? <a href="<?= htmlspecialchars(appUrl('login')) ?>">Entrar</a></p>

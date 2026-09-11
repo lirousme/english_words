@@ -6,7 +6,7 @@ appShellHeader('Painel', 'dashboard');
 <section class="dashboard">
   <section class="hero">
     <p class="eyebrow">PAINEL</p>
-    <h1>Olá, <?= htmlspecialchars(explode(' ', $user['name'] ?? '')[0] ?: 'você') ?>.</h1>
+    <h1>Olá, <?= htmlspecialchars($user['username'] ?? 'você') ?>.</h1>
     <p>Seu acesso está protegido e isolado das outras aplicações desta hospedagem.</p>
   </section>
   <section class="stat-grid" aria-label="Resumo de estudos">

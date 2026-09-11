@@ -3,7 +3,8 @@ declare(strict_types=1);
 
 pageHeader('Entrar');
 $error = $_SESSION['auth_error'] ?? '';
-unset($_SESSION['auth_error']);
+$username = $_SESSION['login_username'] ?? '';
+unset($_SESSION['auth_error'], $_SESSION['login_username']);
 ?>
 <main class="login-shell">
   <section class="brand-panel">
@@ -20,7 +21,7 @@ unset($_SESSION['auth_error']);
       <?php if ($error): ?><div class="alert" role="alert"><?= htmlspecialchars($error) ?></div><?php endif; ?>
       <form action="<?= htmlspecialchars(appUrl('api/auth/login.php')) ?>" method="post" class="login-form">
         <input type="hidden" name="csrf" value="<?= htmlspecialchars(csrfToken()) ?>">
-        <label>E-mail<input name="email" type="email" autocomplete="email" required placeholder="voce@exemplo.com"></label>
+        <label>Usuário<input name="username" type="text" autocomplete="username" required maxlength="50" value="<?= htmlspecialchars((string) $username) ?>" placeholder="seu_usuario"></label>
         <label>Senha<input name="password" type="password" autocomplete="current-password" required placeholder="••••••••"></label>
         <button class="button" type="submit">Entrar <span>→</span></button>
       </form>
