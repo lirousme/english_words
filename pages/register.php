@@ -6,7 +6,7 @@ $error = $_SESSION['auth_error'] ?? '';
 $old = $_SESSION['register_old'] ?? ['username' => ''];
 unset($_SESSION['auth_error'], $_SESSION['register_old']);
 ?>
-<main class="login-shell">
+<main class="login-shell register-page">
   <section class="brand-panel">
     <div class="brand-mark">S</div>
     <p class="eyebrow">SUBDRILL</p>
