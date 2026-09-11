@@ -1,7 +1,11 @@
-Options -Indexes
+Options -Indexes -MultiViews
 DirectoryIndex index.php
 
 RewriteEngine On
+# Keep real files (CSS and the authentication endpoints) available, while
+# sending every application URL to the PHP front controller. Disabling
+# MultiViews is important: otherwise Apache can return its own 404 before the
+# rewrite rule runs when a route resembles a filename.
 RewriteCond %{REQUEST_FILENAME} -f [OR]
 RewriteCond %{REQUEST_FILENAME} -d
 RewriteRule ^ - [L]

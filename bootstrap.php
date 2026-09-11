@@ -22,9 +22,23 @@ function env(string $key, string $default = ''): string
 function appBasePath(): string
 {
     $configured = trim(env('APP_BASE_PATH', ''), '/');
-    if ($configured !== '') return '/' . $configured;
     $script = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/'));
-    return $script === '/' ? '' : rtrim($script, '/');
+    $detected = $script === '/' ? '' : rtrim($script, '/');
+
+    if ($configured === '') return $detected;
+
+    $configured = '/' . $configured;
+    $requestPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+
+    // Keep an explicitly configured public path for reverse proxies, but do
+    // not let an old APP_BASE_PATH make every generated link point to a
+    // directory that is no longer hosting the application. In that case the
+    // PHP script path is the reliable local deployment path.
+    if ($requestPath === $configured || str_starts_with($requestPath, $configured . '/')) {
+        return $configured;
+    }
+
+    return $detected;
 }
 
 function appUrl(string $path = ''): string
