@@ -1,0 +1,50 @@
+<?php
+declare(strict_types=1);
+
+$search = trim((string) ($_GET['q'] ?? ''));
+$page = max(1, (int) ($_GET['page'] ?? 1));
+$perPage = 10;
+$flash = $_SESSION['words_flash'] ?? null;
+unset($_SESSION['words_flash']);
+$words = [];
+$total = 0;
+$error = '';
+
+try {
+    $pdo = new PDO('mysql:host=' . env('DB_HOST') . ';dbname=' . env('DB_NAME') . ';charset=utf8mb4', env('DB_USER'), env('DB_PASS'), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]);
+    $where = $search === '' ? '' : ' WHERE word LIKE :search';
+    $count = $pdo->prepare('SELECT COUNT(*) FROM words' . $where);
+    if ($search !== '') $count->bindValue(':search', '%' . $search . '%');
+    $count->execute();
+    $total = (int) $count->fetchColumn();
+    $pages = max(1, (int) ceil($total / $perPage));
+    $page = min($page, $pages);
+    $statement = $pdo->prepare('SELECT id, word FROM words' . $where . ' ORDER BY word ASC LIMIT :limit OFFSET :offset');
+    if ($search !== '') $statement->bindValue(':search', '%' . $search . '%');
+    $statement->bindValue(':limit', $perPage, PDO::PARAM_INT);
+    $statement->bindValue(':offset', ($page - 1) * $perPage, PDO::PARAM_INT);
+    $statement->execute();
+    $words = $statement->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $exception) {
+    error_log('Subdrill words page database error: ' . $exception->getMessage());
+    $error = 'Não foi possível carregar as palavras agora.';
+    $pages = 1;
+}
+
+$pageUrl = static fn(int $target): string => appUrl('words') . '?' . http_build_query(array_filter(['q' => $search, 'page' => $target], static fn($value) => $value !== '' && $value !== 1));
+appShellHeader('Words', 'words');
+?>
+<section class="words-page">
+  <header class="words-header"><div><p class="eyebrow">VOCABULÁRIO</p><h1>Words</h1><p>Gerencie as palavras disponíveis para os seus estudos.</p></div><button class="icon-button" type="button" data-modal-open="create-word" aria-label="Adicionar palavra">+</button></header>
+  <?php if ($flash): ?><div class="alert <?= $flash['type'] === 'success' ? 'alert-success' : '' ?>" role="alert"><?= htmlspecialchars($flash['message']) ?></div><?php endif; ?>
+  <?php if ($error): ?><div class="alert" role="alert"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+  <form class="word-search" method="get" action="<?= htmlspecialchars(appUrl('words')) ?>"><label for="word-search">Pesquisar palavras</label><input id="word-search" name="q" type="search" value="<?= htmlspecialchars($search) ?>" placeholder="Digite para pesquisar" autocomplete="off"><noscript><button class="button" type="submit">Pesquisar</button></noscript></form>
+  <section class="words-card" aria-label="Lista de palavras"><div class="words-count"><?= $total ?> <?= $total === 1 ? 'palavra encontrada' : 'palavras encontradas' ?></div>
+    <?php if ($words): ?><ul class="words-list"><?php foreach ($words as $item): ?><li><span><?= htmlspecialchars($item['word']) ?></span><div class="word-actions"><button class="text-button" type="button" data-modal-open="edit-word" data-id="<?= (int) $item['id'] ?>" data-word="<?= htmlspecialchars($item['word'], ENT_QUOTES) ?>">Editar</button><form method="post" action="<?= htmlspecialchars(appUrl('words')) ?>" onsubmit="return confirm('Remover a palavra <?= htmlspecialchars($item['word'], ENT_QUOTES) ?>?');"><input type="hidden" name="csrf" value="<?= htmlspecialchars(csrfToken()) ?>"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int) $item['id'] ?>"><button class="text-button danger" type="submit">Remover</button></form></div></li><?php endforeach; ?></ul><?php else: ?><div class="empty-state"><strong>Nenhuma palavra encontrada.</strong><span>Adicione uma palavra ou ajuste a pesquisa.</span></div><?php endif; ?>
+  </section>
+  <?php if ($pages > 1): ?><nav class="pagination" aria-label="Paginação de palavras"><a class="text-button <?= $page === 1 ? 'is-disabled' : '' ?>" href="<?= htmlspecialchars($pageUrl(max(1, $page - 1))) ?>" <?= $page === 1 ? 'aria-disabled="true" tabindex="-1"' : '' ?>>← Anterior</a><span>Página <?= $page ?> de <?= $pages ?></span><a class="text-button <?= $page === $pages ? 'is-disabled' : '' ?>" href="<?= htmlspecialchars($pageUrl(min($pages, $page + 1))) ?>" <?= $page === $pages ? 'aria-disabled="true" tabindex="-1"' : '' ?>>Próxima →</a></nav><?php endif; ?>
+</section>
+<dialog class="word-modal" id="create-word" aria-labelledby="create-title"><form method="dialog"><button class="modal-close" aria-label="Fechar">×</button></form><form method="post" action="<?= htmlspecialchars(appUrl('words')) ?>"><input type="hidden" name="csrf" value="<?= htmlspecialchars(csrfToken()) ?>"><input type="hidden" name="action" value="create"><h2 id="create-title">Adicionar palavra</h2><p>Espaços são aceitos em nomes compostos.</p><label>Palavra<input name="word" required maxlength="150" autofocus></label><button class="button" type="submit">Adicionar</button></form></dialog>
+<dialog class="word-modal" id="edit-word" aria-labelledby="edit-title"><form method="dialog"><button class="modal-close" aria-label="Fechar">×</button></form><form method="post" action="<?= htmlspecialchars(appUrl('words')) ?>"><input type="hidden" name="csrf" value="<?= htmlspecialchars(csrfToken()) ?>"><input type="hidden" name="action" value="update"><input type="hidden" name="id"><h2 id="edit-title">Editar palavra</h2><label>Palavra<input name="word" required maxlength="150"></label><button class="button" type="submit">Salvar alterações</button></form></dialog>
+<script>document.querySelectorAll('[data-modal-open]').forEach(button=>button.addEventListener('click',()=>{const modal=document.getElementById(button.dataset.modalOpen);if(button.dataset.id){modal.querySelector('[name="id"]').value=button.dataset.id;modal.querySelector('[name="word"]').value=button.dataset.word;}modal.showModal();modal.querySelector('[name="word"]').focus();}));let timer;document.getElementById('word-search').addEventListener('input',event=>{clearTimeout(timer);timer=setTimeout(()=>event.target.form.submit(),300);});</script>
+<?php appShellFooter();
