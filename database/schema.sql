@@ -21,3 +21,12 @@ CREATE TABLE translations (
   UNIQUE KEY translations_word_portugues_type_unique (id_word, portugues, `type`),
   KEY translations_word_type_index (id_word, `type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE frases (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  id_translation BIGINT UNSIGNED NOT NULL,
+  frase_portugues TEXT NOT NULL,
+  frase_ingles TEXT NOT NULL,
+  CONSTRAINT frases_translation_fk FOREIGN KEY (id_translation) REFERENCES translations (id) ON DELETE CASCADE,
+  UNIQUE KEY frases_translation_unique (id_translation)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
