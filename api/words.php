@@ -27,7 +27,7 @@ function translationsRedirect(int $wordId, string $message, string $type = 'succ
     exit;
 }
 
-/** @return list<array{portugues: string, type: int}> */
+/** @return list<array{portugues: string, type: int, frase_portugues: string, frase_ingles: string}> */
 function discoverTranslations(string $word): array
 {
     $apiKey = env('GEMINI_API_KEY');
@@ -39,7 +39,8 @@ function discoverTranslations(string $word): array
     $prompt = "Você é um dicionário inglês-português. Encontre todas as traduções usuais possíveis em português brasileiro da palavra ou expressão inglesa exatamente como fornecida entre <termo> e </termo>.\n\n<termo>{$word}</termo>\n\n"
         . "Regra crítica: traduza ipsis litteris somente o termo dentro das tags. Não acrescente, remova, complete ou altere palavras. Por exemplo, se o termo for 'get', não inclua sentidos de 'get off'; se for 'get off', não inclua sentidos de apenas 'get'.\n"
         . "Classifique cada tradução com type: 1 verbo/phrasal verb/locução verbal; 2 substantivo/locução substantiva; 3 conjunção/locução conjuntiva; 4 advérbio/locução adverbial; 5 adjetivo/locução adjetiva; 6 preposição/locução prepositiva.\n"
-        . 'Retorne somente JSON válido, sem markdown, no formato {"translations":[{"portugues":"...","type":1}]}. Use apenas traduções em português; não explique nada e não repita itens.';
+        . "Para cada tradução, crie exatamente uma frase curta e natural de exemplo. A frase em inglês deve usar o termo de <termo> ipsis litteris, sem flexioná-lo ou substituí-lo, e a frase em português deve ser a tradução dessa mesma frase.\n"
+        . 'Retorne somente JSON válido, sem markdown, no formato {"translations":[{"portugues":"...","type":1,"frase_portugues":"...","frase_ingles":"..."}]}. Use apenas traduções e frases em português brasileiro; não explique nada e não repita itens.';
     $payload = json_encode(['contents' => [['parts' => [['text' => $prompt]]]]], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     $curl = curl_init($baseUrl . '/' . rawurlencode($model) . ':generateContent?key=' . rawurlencode($apiKey));
     curl_setopt_array($curl, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => $payload, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 45]);
@@ -61,9 +62,11 @@ function discoverTranslations(string $word): array
     $translations = [];
     foreach ($result['translations'] as $item) {
         $translation = preg_replace('/\s+/u', ' ', trim(is_array($item) ? (string) ($item['portugues'] ?? '') : '')) ?? '';
+        $portugueseSentence = preg_replace('/\s+/u', ' ', trim(is_array($item) ? (string) ($item['frase_portugues'] ?? '') : '')) ?? '';
+        $englishSentence = preg_replace('/\s+/u', ' ', trim(is_array($item) ? (string) ($item['frase_ingles'] ?? '') : '')) ?? '';
         $type = is_array($item) ? filter_var($item['type'] ?? null, FILTER_VALIDATE_INT) : false;
-        if ($translation === '' || mb_strlen($translation) > 255 || !is_int($type) || $type < 1 || $type > 6) continue;
-        $translations[$type . ':' . mb_strtolower($translation)] = ['portugues' => $translation, 'type' => $type];
+        if ($translation === '' || mb_strlen($translation) > 255 || $portugueseSentence === '' || $englishSentence === '' || mb_strlen($portugueseSentence) > 2000 || mb_strlen($englishSentence) > 2000 || stripos($englishSentence, $word) === false || !is_int($type) || $type < 1 || $type > 6) continue;
+        $translations[$type . ':' . mb_strtolower($translation)] = ['portugues' => $translation, 'type' => $type, 'frase_portugues' => $portugueseSentence, 'frase_ingles' => $englishSentence];
     }
     if ($translations === []) throw new RuntimeException('O Gemini não encontrou traduções válidas para esta palavra.');
     return array_values($translations);
@@ -108,7 +111,11 @@ try {
         $pdo->beginTransaction();
         $pdo->prepare('DELETE FROM translations WHERE id_word = :id')->execute(['id' => $id]);
         $insert = $pdo->prepare('INSERT INTO translations (id_word, portugues, `type`) VALUES (:id_word, :portugues, :type)');
-        foreach ($translations as $translation) $insert->execute(['id_word' => $id, 'portugues' => $translation['portugues'], 'type' => $translation['type']]);
+        $insertSentence = $pdo->prepare('INSERT INTO frases (id_translation, frase_portugues, frase_ingles) VALUES (:id_translation, :frase_portugues, :frase_ingles)');
+        foreach ($translations as $translation) {
+            $insert->execute(['id_word' => $id, 'portugues' => $translation['portugues'], 'type' => $translation['type']]);
+            $insertSentence->execute(['id_translation' => (int) $pdo->lastInsertId(), 'frase_portugues' => $translation['frase_portugues'], 'frase_ingles' => $translation['frase_ingles']]);
+        }
         $pdo->commit();
         translationsRedirect((int) $id, count($translations) . ' traduções encontradas e salvas.');
     }
