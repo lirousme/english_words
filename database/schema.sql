@@ -28,5 +28,5 @@ CREATE TABLE frases (
   frase_portugues TEXT NOT NULL,
   frase_ingles TEXT NOT NULL,
   CONSTRAINT frases_translation_fk FOREIGN KEY (id_translation) REFERENCES translations (id) ON DELETE CASCADE,
-  UNIQUE KEY frases_translation_unique (id_translation)
+  KEY frases_translation_index (id_translation)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
