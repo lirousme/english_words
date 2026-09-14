@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 $search = trim((string) ($_GET['q'] ?? ''));
+$selectedWordId = filter_var($_GET['word'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
 $page = max(1, (int) ($_GET['page'] ?? 1));
 $perPage = 10;
 $flash = $_SESSION['words_flash'] ?? null;
@@ -9,6 +10,8 @@ unset($_SESSION['words_flash']);
 $words = [];
 $total = 0;
 $error = '';
+$selectedWord = null;
+$translations = [];
 
 try {
     $pdo = new PDO('mysql:host=' . env('DB_HOST') . ';dbname=' . env('DB_NAME') . ';charset=utf8mb4', env('DB_USER'), env('DB_PASS'), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]);
@@ -25,6 +28,16 @@ try {
     $statement->bindValue(':offset', ($page - 1) * $perPage, PDO::PARAM_INT);
     $statement->execute();
     $words = $statement->fetchAll(PDO::FETCH_ASSOC);
+    if ($selectedWordId) {
+        $selectedStatement = $pdo->prepare('SELECT id, word FROM words WHERE id = :id');
+        $selectedStatement->execute(['id' => $selectedWordId]);
+        $selectedWord = $selectedStatement->fetch(PDO::FETCH_ASSOC) ?: null;
+        if ($selectedWord) {
+            $translationStatement = $pdo->prepare('SELECT portugues, `type` FROM translations WHERE id_word = :id ORDER BY `type` ASC, portugues ASC');
+            $translationStatement->execute(['id' => $selectedWordId]);
+            $translations = $translationStatement->fetchAll(PDO::FETCH_ASSOC);
+        }
+    }
 } catch (PDOException $exception) {
     error_log('Subdrill words page database error: ' . $exception->getMessage());
     $error = 'Não foi possível carregar as palavras agora.';
@@ -32,6 +45,8 @@ try {
 }
 
 $pageUrl = static fn(int $target): string => appUrl('words') . '?' . http_build_query(array_filter(['q' => $search, 'page' => $target], static fn($value) => $value !== '' && $value !== 1));
+$wordUrl = static fn(int $id): string => appUrl('words') . '?word=' . $id;
+$translationTypes = [1 => 'Verbo / phrasal verb / locução verbal', 2 => 'Substantivo / locução substantiva', 3 => 'Conjunção / locução conjuntiva', 4 => 'Advérbio / locução adverbial', 5 => 'Adjetivo / locução adjetiva', 6 => 'Preposição / locução prepositiva'];
 appShellHeader('Words', 'words');
 ?>
 <section class="words-page">
@@ -40,8 +55,9 @@ appShellHeader('Words', 'words');
   <?php if ($error): ?><div class="alert" role="alert"><?= htmlspecialchars($error) ?></div><?php endif; ?>
   <form class="word-search" method="get" action="<?= htmlspecialchars(appUrl('words')) ?>"><label for="word-search">Pesquisar palavras</label><input id="word-search" name="q" type="search" value="<?= htmlspecialchars($search) ?>" placeholder="Digite para pesquisar" autocomplete="off"><noscript><button class="button" type="submit">Pesquisar</button></noscript></form>
   <section class="words-card" aria-label="Lista de palavras"><div class="words-count"><?= $total ?> <?= $total === 1 ? 'palavra encontrada' : 'palavras encontradas' ?></div>
-    <?php if ($words): ?><ul class="words-list"><?php foreach ($words as $item): ?><li><span><?= htmlspecialchars($item['word']) ?></span><div class="word-actions"><button class="text-button" type="button" data-modal-open="edit-word" data-id="<?= (int) $item['id'] ?>" data-word="<?= htmlspecialchars($item['word'], ENT_QUOTES) ?>">Editar</button><form method="post" action="<?= htmlspecialchars(appUrl('words')) ?>" onsubmit="return confirm('Remover a palavra <?= htmlspecialchars($item['word'], ENT_QUOTES) ?>?');"><input type="hidden" name="csrf" value="<?= htmlspecialchars(csrfToken()) ?>"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int) $item['id'] ?>"><button class="text-button danger" type="submit">Remover</button></form></div></li><?php endforeach; ?></ul><?php else: ?><div class="empty-state"><strong>Nenhuma palavra encontrada.</strong><span>Adicione uma palavra ou ajuste a pesquisa.</span></div><?php endif; ?>
+    <?php if ($words): ?><ul class="words-list"><?php foreach ($words as $item): ?><li><a class="word-link" href="<?= htmlspecialchars($wordUrl((int) $item['id'])) ?>"><?= htmlspecialchars($item['word']) ?></a><div class="word-actions"><button class="text-button" type="button" data-modal-open="edit-word" data-id="<?= (int) $item['id'] ?>" data-word="<?= htmlspecialchars($item['word'], ENT_QUOTES) ?>">Editar</button><form method="post" action="<?= htmlspecialchars(appUrl('words')) ?>" onsubmit="return confirm('Remover a palavra <?= htmlspecialchars($item['word'], ENT_QUOTES) ?>?');"><input type="hidden" name="csrf" value="<?= htmlspecialchars(csrfToken()) ?>"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int) $item['id'] ?>"><button class="text-button danger" type="submit">Remover</button></form></div></li><?php endforeach; ?></ul><?php else: ?><div class="empty-state"><strong>Nenhuma palavra encontrada.</strong><span>Adicione uma palavra ou ajuste a pesquisa.</span></div><?php endif; ?>
   </section>
+  <?php if ($selectedWord): ?><section class="translations-card" aria-labelledby="translations-title"><header><div><p class="eyebrow">TRADUÇÕES</p><h2 id="translations-title"><?= htmlspecialchars($selectedWord['word']) ?></h2><p>Traduções armazenadas para esta palavra ou expressão exata.</p></div><form method="post" action="<?= htmlspecialchars(appUrl('words')) ?>"><input type="hidden" name="csrf" value="<?= htmlspecialchars(csrfToken()) ?>"><input type="hidden" name="action" value="discover"><input type="hidden" name="id" value="<?= (int) $selectedWord['id'] ?>"><button class="button" type="submit">Descobrir traduções</button></form></header><?php if ($translations): ?><ul class="translations-list"><?php foreach ($translations as $translation): ?><li><span><?= htmlspecialchars($translation['portugues']) ?></span><small><?= htmlspecialchars($translationTypes[(int) $translation['type']] ?? 'Classe desconhecida') ?></small></li><?php endforeach; ?></ul><?php else: ?><div class="empty-state"><strong>Nenhuma tradução descoberta ainda.</strong><span>Use “Descobrir traduções” para consultar o Gemini.</span></div><?php endif; ?></section><?php elseif ($selectedWordId): ?><div class="alert" role="alert">Palavra não encontrada.</div><?php endif; ?>
   <?php if ($pages > 1): ?><nav class="pagination" aria-label="Paginação de palavras"><a class="text-button <?= $page === 1 ? 'is-disabled' : '' ?>" href="<?= htmlspecialchars($pageUrl(max(1, $page - 1))) ?>" <?= $page === 1 ? 'aria-disabled="true" tabindex="-1"' : '' ?>>← Anterior</a><span>Página <?= $page ?> de <?= $pages ?></span><a class="text-button <?= $page === $pages ? 'is-disabled' : '' ?>" href="<?= htmlspecialchars($pageUrl(min($pages, $page + 1))) ?>" <?= $page === $pages ? 'aria-disabled="true" tabindex="-1"' : '' ?>>Próxima →</a></nav><?php endif; ?>
 </section>
 <dialog class="word-modal" id="create-word" aria-labelledby="create-title"><form method="dialog"><button class="modal-close" aria-label="Fechar">×</button></form><form method="post" action="<?= htmlspecialchars(appUrl('words')) ?>"><input type="hidden" name="csrf" value="<?= htmlspecialchars(csrfToken()) ?>"><input type="hidden" name="action" value="create"><h2 id="create-title">Adicionar palavra</h2><p>Espaços são aceitos em nomes compostos.</p><label>Palavra<input name="word" required maxlength="150" autofocus></label><button class="button" type="submit">Adicionar</button></form></dialog>
