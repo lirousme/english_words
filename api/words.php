@@ -90,8 +90,57 @@ function discoverTranslations(string $word): array
     return ['translations' => array_values($translations), 'relatedExpressions' => array_values($relatedExpressions)];
 }
 
+/** @param list<array{frase_portugues: string, frase_ingles: string}> $existingSentences
+ *  @return list<array{frase_portugues: string, frase_ingles: string}> */
+function generateAdditionalSentences(string $word, string $translation, array $existingSentences, int $quantity): array
+{
+    if ($quantity < 1) return [];
+    $apiKey = env('GEMINI_API_KEY');
+    if ($apiKey === '') throw new RuntimeException('A chave do Gemini não foi configurada.');
+    if (!function_exists('curl_init')) throw new RuntimeException('A extensão cURL não está disponível no servidor.');
+
+    $existingJson = json_encode($existingSentences, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    $model = env('GEMINI_TRANSLATION_MODEL', 'gemini-3.5-flash-lite');
+    $baseUrl = rtrim(env('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/models'), '/');
+    $prompt = "Você cria frases de exemplo para um dicionário inglês-português. A palavra ou expressão inglesa original é <termo>{$word}</termo> e a tradução em português brasileiro é <traducao>{$translation}</traducao>.\n\n"
+        . "Crie exatamente {$quantity} novas frases curtas, naturais e distintas para esse sentido da tradução. Cada frase em inglês deve conter o termo de <termo> ipsis litteris, sem flexioná-lo, substituí-lo ou acrescentar palavras ao termo. Cada frase em português deve traduzir a respectiva frase em inglês e usar o sentido de <traducao>. Não repita nem reformule as frases já existentes abaixo: {$existingJson}\n\n"
+        . 'Retorne somente JSON válido, sem markdown, no formato {"sentences":[{"frase_portugues":"...","frase_ingles":"..."}]}. Não explique nada.';
+    $payload = json_encode(['contents' => [['parts' => [['text' => $prompt]]]]], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    $curl = curl_init($baseUrl . '/' . rawurlencode($model) . ':generateContent?key=' . rawurlencode($apiKey));
+    curl_setopt_array($curl, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => $payload, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 45]);
+    $response = curl_exec($curl);
+    $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+    $curlError = curl_error($curl);
+    curl_close($curl);
+    if (!is_string($response) || $status < 200 || $status >= 300) {
+        error_log('Subdrill Gemini sentence generation error: HTTP ' . $status . ' ' . $curlError);
+        throw new RuntimeException('Não foi possível consultar o Gemini agora.');
+    }
+    $body = json_decode($response, true, 512, JSON_THROW_ON_ERROR);
+    $text = $body['candidates'][0]['content']['parts'][0]['text'] ?? '';
+    if (!is_string($text)) throw new RuntimeException('O Gemini retornou uma resposta inválida.');
+    $text = preg_replace('/^```(?:json)?\s*|\s*```$/i', '', trim($text)) ?? '';
+    $result = json_decode($text, true, 512, JSON_THROW_ON_ERROR);
+    if (!is_array($result['sentences'] ?? null)) throw new RuntimeException('O Gemini não retornou frases no formato esperado.');
+
+    $known = [];
+    foreach ($existingSentences as $sentence) $known[mb_strtolower($sentence['frase_ingles'])] = true;
+    $sentences = [];
+    foreach ($result['sentences'] as $item) {
+        $portugueseSentence = preg_replace('/\s+/u', ' ', trim(is_array($item) ? (string) ($item['frase_portugues'] ?? '') : '')) ?? '';
+        $englishSentence = preg_replace('/\s+/u', ' ', trim(is_array($item) ? (string) ($item['frase_ingles'] ?? '') : '')) ?? '';
+        $key = mb_strtolower($englishSentence);
+        if ($portugueseSentence === '' || $englishSentence === '' || mb_strlen($portugueseSentence) > 2000 || mb_strlen($englishSentence) > 2000 || !englishSentenceUsesExactTerm($englishSentence, $word) || isset($known[$key])) continue;
+        $known[$key] = true;
+        $sentences[] = ['frase_portugues' => $portugueseSentence, 'frase_ingles' => $englishSentence];
+    }
+    if (count($sentences) !== $quantity) throw new RuntimeException('O Gemini não gerou a quantidade esperada de frases válidas.');
+    return $sentences;
+}
+
 $action = (string) ($_POST['action'] ?? '');
 $id = filter_var($_POST['id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+$translationId = filter_var($_POST['translation_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 $word = normalizedWord((string) ($_POST['word'] ?? ''));
 
 if (in_array($action, ['create', 'update'], true) && ($word === '' || mb_strlen($word) > 150 || preg_match('/[\x00-\x1F\x7F]/u', $word))) {
@@ -99,6 +148,7 @@ if (in_array($action, ['create', 'update'], true) && ($word === '' || mb_strlen(
 }
 if (in_array($action, ['update', 'delete'], true) && !$id) wordsRedirect('Palavra inválida.', 'error');
 if ($action === 'discover' && !$id) wordsRedirect('Palavra inválida.', 'error');
+if ($action === 'generate_more' && (!$id || !$translationId)) wordsRedirect('Tradução inválida.', 'error');
 
 try {
     $pdo = new PDO('mysql:host=' . env('DB_HOST') . ';dbname=' . env('DB_NAME') . ';charset=utf8mb4', env('DB_USER'), env('DB_PASS'), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]);
@@ -119,6 +169,27 @@ try {
         $statement = $pdo->prepare('DELETE FROM words WHERE id = :id');
         $statement->execute(['id' => $id]);
         wordsRedirect($statement->rowCount() ? 'Palavra removida com sucesso.' : 'Palavra não encontrada.', $statement->rowCount() ? 'success' : 'error');
+    }
+    if ($action === 'generate_more') {
+        $translationStatement = $pdo->prepare('SELECT translations.id, words.word, translations.portugues FROM translations INNER JOIN words ON words.id = translations.id_word WHERE translations.id = :translation_id AND translations.id_word = :word_id');
+        $translationStatement->execute(['translation_id' => $translationId, 'word_id' => $id]);
+        $storedTranslation = $translationStatement->fetch(PDO::FETCH_ASSOC);
+        if (!$storedTranslation) translationsRedirect((int) $id, 'Tradução não encontrada.', 'error');
+
+        $sentencesStatement = $pdo->prepare('SELECT frase_portugues, frase_ingles FROM frases WHERE id_translation = :translation_id ORDER BY id ASC');
+        $sentencesStatement->execute(['translation_id' => $translationId]);
+        $existingSentences = $sentencesStatement->fetchAll(PDO::FETCH_ASSOC);
+        $missingSentences = max(0, 10 - count($existingSentences));
+        if ($missingSentences === 0) translationsRedirect((int) $id, 'Esta tradução já possui 10 frases de exemplo.');
+
+        $newSentences = generateAdditionalSentences($storedTranslation['word'], $storedTranslation['portugues'], $existingSentences, $missingSentences);
+        $pdo->beginTransaction();
+        $insertSentence = $pdo->prepare('INSERT INTO frases (id_translation, frase_portugues, frase_ingles) VALUES (:id_translation, :frase_portugues, :frase_ingles)');
+        foreach ($newSentences as $sentence) {
+            $insertSentence->execute(['id_translation' => $translationId, 'frase_portugues' => $sentence['frase_portugues'], 'frase_ingles' => $sentence['frase_ingles']]);
+        }
+        $pdo->commit();
+        translationsRedirect((int) $id, count($newSentences) . ' novas frases geradas para “' . $storedTranslation['portugues'] . '”.');
     }
     if ($action === 'discover') {
         $wordStatement = $pdo->prepare('SELECT word FROM words WHERE id = :id');
