@@ -33,6 +33,32 @@ function englishSentenceUsesExactTerm(string $sentence, string $term): bool
     return preg_match($pattern, $sentence) === 1;
 }
 
+function synthesizeSentenceAudio(string $text, string $languageCode, string $voiceName): string
+{
+    if (GOOGLE_CLOUD_API_KEY === '') throw new RuntimeException('A chave do Google Cloud não foi configurada.');
+    if (!function_exists('curl_init')) throw new RuntimeException('A extensão cURL não está disponível no servidor.');
+
+    $payload = json_encode([
+        'input' => ['text' => $text],
+        'voice' => ['languageCode' => $languageCode, 'name' => $voiceName],
+        'audioConfig' => ['audioEncoding' => 'MP3'],
+    ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    $curl = curl_init('https://texttospeech.googleapis.com/v1/text:synthesize?key=' . rawurlencode(GOOGLE_CLOUD_API_KEY));
+    curl_setopt_array($curl, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => $payload, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 45]);
+    $response = curl_exec($curl);
+    $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+    $curlError = curl_error($curl);
+    curl_close($curl);
+    if (!is_string($response) || $status < 200 || $status >= 300) {
+        error_log('Subdrill Google Cloud TTS error: HTTP ' . $status . ' ' . $curlError);
+        throw new RuntimeException('Não foi possível gerar os áudios agora.');
+    }
+    $body = json_decode($response, true, 512, JSON_THROW_ON_ERROR);
+    $audio = $body['audioContent'] ?? '';
+    if (!is_string($audio) || $audio === '' || base64_decode($audio, true) === false) throw new RuntimeException('O Google Cloud retornou um áudio inválido.');
+    return $audio;
+}
+
 /** @return array{translations: list<array{portugues: string, type: int, frase_portugues: string, frase_ingles: string}>, relatedExpressions: list<string>} */
 function discoverTranslations(string $word): array
 {
@@ -190,6 +216,21 @@ try {
         }
         $pdo->commit();
         translationsRedirect((int) $id, count($newSentences) . ' novas frases geradas para “' . $storedTranslation['portugues'] . '”.');
+    }
+    if ($action === 'generate_audio') {
+        $sentencesStatement = $pdo->query("SELECT id, frase_portugues, frase_ingles, audio_portugues, audio_en_gb FROM frases WHERE audio_portugues IS NULL OR audio_portugues = '' OR audio_en_gb IS NULL OR audio_en_gb = '' ORDER BY id ASC");
+        $sentences = $sentencesStatement->fetchAll(PDO::FETCH_ASSOC);
+        if ($sentences === []) wordsRedirect('Todas as frases já possuem áudio.');
+
+        $updateAudio = $pdo->prepare('UPDATE frases SET audio_portugues = :audio_portugues, audio_en_gb = :audio_en_gb WHERE id = :id');
+        foreach ($sentences as $sentence) {
+            $portugueseAudio = (string) ($sentence['audio_portugues'] ?? '');
+            $englishAudio = (string) ($sentence['audio_en_gb'] ?? '');
+            if ($englishAudio === '') $englishAudio = synthesizeSentenceAudio($sentence['frase_ingles'], 'en-GB', 'en-GB-Chirp3-HD-Algieba');
+            if ($portugueseAudio === '') $portugueseAudio = synthesizeSentenceAudio($sentence['frase_portugues'], 'pt-BR', 'pt-BR-Chirp3-HD-Algieba');
+            $updateAudio->execute(['id' => $sentence['id'], 'audio_portugues' => $portugueseAudio, 'audio_en_gb' => $englishAudio]);
+        }
+        wordsRedirect(count($sentences) . ' frase' . (count($sentences) === 1 ? '' : 's') . ' com áudio gerado.');
     }
     if ($action === 'discover') {
         $wordStatement = $pdo->prepare('SELECT word FROM words WHERE id = :id');

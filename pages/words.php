@@ -58,7 +58,7 @@ $translationTypes = [1 => 'Verbo / phrasal verb / locução verbal', 2 => 'Subst
 appShellHeader('Words', 'words');
 ?>
 <section class="words-page">
-  <header class="words-header"><div><p class="eyebrow">VOCABULÁRIO</p><h1>Words</h1><p>Gerencie as palavras disponíveis para os seus estudos.</p></div><button class="icon-button" type="button" data-modal-open="create-word" aria-label="Adicionar palavra">+</button></header>
+  <header class="words-header"><div><p class="eyebrow">VOCABULÁRIO</p><h1>Words</h1><p>Gerencie as palavras disponíveis para os seus estudos.</p></div><div class="words-header-actions"><form method="post" action="<?= htmlspecialchars(appUrl('words')) ?>"><input type="hidden" name="csrf" value="<?= htmlspecialchars(csrfToken()) ?>"><input type="hidden" name="action" value="generate_audio"><button class="icon-button audio-generate-button" type="submit" aria-label="Gerar áudios das frases sem áudio" title="Gerar áudios pendentes">♫</button></form><button class="icon-button" type="button" data-modal-open="create-word" aria-label="Adicionar palavra">+</button></div></header>
   <?php if ($flash): ?><div class="alert <?= $flash['type'] === 'success' ? 'alert-success' : '' ?>" role="alert"><?= htmlspecialchars($flash['message']) ?></div><?php endif; ?>
   <?php if ($error): ?><div class="alert" role="alert"><?= htmlspecialchars($error) ?></div><?php endif; ?>
   <form class="word-search" method="get" action="<?= htmlspecialchars(appUrl('words')) ?>"><label for="word-search">Pesquisar palavras</label><input id="word-search" name="q" type="search" value="<?= htmlspecialchars($search) ?>" placeholder="Digite para pesquisar" autocomplete="off"><noscript><button class="button" type="submit">Pesquisar</button></noscript></form>
