@@ -124,10 +124,12 @@ function appShellHeader(string $title, string $activePage = 'dashboard'): void
     $displayName = $user['username'] ?? 'Conta';
     $initial = strtoupper(substr(trim($displayName), 0, 1) ?: 'S');
     $dashboardUrl = htmlspecialchars(appUrl('dashboard'), ENT_QUOTES, 'UTF-8');
+    $playUrl = htmlspecialchars(appUrl('jogar'), ENT_QUOTES, 'UTF-8');
     $wordsUrl = htmlspecialchars(appUrl('words'), ENT_QUOTES, 'UTF-8');
     $logoutUrl = htmlspecialchars(appUrl('logout'), ENT_QUOTES, 'UTF-8');
     $safeName = htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8');
     $isDashboard = $activePage === 'dashboard';
+    $isPlay = $activePage === 'play';
     $isWords = $activePage === 'words';
 
     pageHeader($title);
@@ -137,6 +139,7 @@ function appShellHeader(string $title, string $activePage = 'dashboard'): void
     echo '<a class="app-brand" href="' . $dashboardUrl . '"><span aria-hidden="true">◈</span> Subdrill</a>';
     echo '<nav class="app-nav" aria-label="Áreas do aplicativo">';
     echo '<a class="app-nav-link' . ($isDashboard ? ' is-active' : '') . '" href="' . $dashboardUrl . '"' . ($isDashboard ? ' aria-current="page"' : '') . '><span aria-hidden="true">⌂</span> Visão geral</a>';
+    echo '<a class="app-nav-link' . ($isPlay ? ' is-active' : '') . '" href="' . $playUrl . '"' . ($isPlay ? ' aria-current="page"' : '') . '><span aria-hidden="true">▷</span> Jogar</a>';
     echo '<a class="app-nav-link' . ($isWords ? ' is-active' : '') . '" href="' . $wordsUrl . '"' . ($isWords ? ' aria-current="page"' : '') . '><span aria-hidden="true">▤</span> Words</a>';
     echo '</nav>';
     echo '<div class="sidebar-account"><span class="account-avatar" aria-hidden="true">' . htmlspecialchars($initial, ENT_QUOTES, 'UTF-8') . '</span><span class="account-name">' . $safeName . '</span><a href="' . $logoutUrl . '">Sair</a></div>';

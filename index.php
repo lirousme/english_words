@@ -33,6 +33,11 @@ switch ($path) {
         require __DIR__ . '/pages/register.php';
         break;
     case '/dashboard': requireAuth(); require __DIR__ . '/pages/dashboard.php'; break;
+    case '/jogar':
+        requireAuth();
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') { require __DIR__ . '/api/reviews.php'; }
+        require __DIR__ . '/pages/play.php';
+        break;
     case '/words':
         requireAuth();
         if ($_SERVER['REQUEST_METHOD'] === 'POST') { require __DIR__ . '/api/words.php'; }
