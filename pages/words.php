@@ -55,7 +55,7 @@ try {
 $pageUrl = static fn(int $target): string => appUrl('words') . '?' . http_build_query(array_filter(['q' => $search, 'page' => $target], static fn($value) => $value !== '' && $value !== 1));
 $wordUrl = static fn(int $id): string => appUrl('words') . '?word=' . $id;
 $translationTypes = [1 => 'Verbo / phrasal verb / locução verbal', 2 => 'Substantivo / locução substantiva', 3 => 'Conjunção / locução conjuntiva', 4 => 'Advérbio / locução adverbial', 5 => 'Adjetivo / locução adjetiva', 6 => 'Preposição / locução prepositiva'];
-appShellHeader('Words', 'words');
+appShellHeader($selectedWord['word'] ?? 'Words', 'words');
 ?>
 <section class="words-page">
   <header class="words-header"><div><p class="eyebrow">VOCABULÁRIO</p><h1>Words</h1><p>Gerencie as palavras disponíveis para os seus estudos.</p></div><div class="words-header-actions"><form method="post" action="<?= htmlspecialchars(appUrl('words')) ?>"><input type="hidden" name="csrf" value="<?= htmlspecialchars(csrfToken()) ?>"><input type="hidden" name="action" value="generate_audio"><button class="icon-button audio-generate-button" type="submit" aria-label="Gerar áudios das frases sem áudio" title="Gerar áudios pendentes">♫</button></form><button class="icon-button" type="button" data-modal-open="create-word" aria-label="Adicionar palavra">+</button></div></header>

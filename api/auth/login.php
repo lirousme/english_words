@@ -21,4 +21,4 @@ if (!$user || !password_verify($password, $user['password_hash'])) { usleep(2500
 session_regenerate_id(true);
 $_SESSION['user'] = ['id' => (int) $user['id'], 'username' => $user['username']];
 unset($_SESSION['csrf'], $_SESSION['login_username']);
-header('Location: ' . appUrl('dashboard'));
+header('Location: ' . appUrl('words'));
