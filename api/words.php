@@ -20,8 +20,21 @@ function normalizedWord(string $word): string
     return preg_replace('/\s+/u', ' ', trim($word)) ?? '';
 }
 
+function expectsJsonResponse(): bool
+{
+    return ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest'
+        && str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json');
+}
+
 function translationsRedirect(int $wordId, string $message, string $type = 'success'): never
 {
+    if (expectsJsonResponse()) {
+        http_response_code($type === 'success' ? 200 : 422);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['message' => $message, 'type' => $type], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        exit;
+    }
+
     $_SESSION['words_flash'] = ['message' => $message, 'type' => $type];
     header('Location: ' . appUrl('words') . '?word=' . $wordId);
     exit;
@@ -333,7 +346,7 @@ try {
     }
 
     if ($action === 'discover' || $action === 'generate_more') {
-        wordsRedirect('Não foi possível gerar as traduções agora. Tente novamente mais tarde.', 'error');
+        translationsRedirect((int) $id, 'Não foi possível gerar as traduções agora. Tente novamente mais tarde.', 'error');
     }
     if ($action === 'generate_audio') {
         wordsRedirect('Não foi possível gerar os áudios agora. Tente novamente mais tarde.', 'error');
