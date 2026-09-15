@@ -33,14 +33,21 @@ function englishSentenceUsesExactTerm(string $sentence, string $term): bool
     return preg_match($pattern, $sentence) === 1;
 }
 
-/**
- * Exception whose message is safe to show in the Words page.
- *
- * Gemini's response body can contain implementation details, so this exception
- * exposes only a useful, actionable cause to the user.
- */
+/** Exception whose message can be shown in the Words page. */
 final class GeminiRequestException extends RuntimeException
 {
+}
+
+function geminiResponseMessage(mixed $response): string
+{
+    if (!is_string($response) || trim($response) === '') return '';
+
+    $body = json_decode($response, true);
+    if (is_array($body) && is_string($body['error']['message'] ?? null) && trim($body['error']['message']) !== '') {
+        return trim($body['error']['message']);
+    }
+
+    return trim($response);
 }
 
 function geminiRequestErrorMessage(int $status, mixed $response, int $curlErrno): string
@@ -50,10 +57,9 @@ function geminiRequestErrorMessage(int $status, mixed $response, int $curlErrno)
         return 'Não foi possível conectar ao Gemini. Verifique a conexão do servidor e tente novamente.';
     }
 
-    $body = json_decode($response, true);
-    $apiMessage = is_array($body) ? strtolower((string) ($body['error']['message'] ?? '')) : '';
+    $apiMessage = strtolower(geminiResponseMessage($response));
 
-    return match ($status) {
+    $message = match ($status) {
         400 => 'O Gemini recusou a solicitação. Verifique a configuração do modelo e tente novamente.',
         401 => 'A chave da API do Gemini é inválida ou expirou. Confira GEMINI_API_KEY.',
         403 => 'A chave da API do Gemini não tem permissão para usar este serviço. Confira a chave, a API habilitada e o faturamento do projeto.',
@@ -64,6 +70,9 @@ function geminiRequestErrorMessage(int $status, mixed $response, int $curlErrno)
         500, 502, 503, 504 => 'O Gemini está indisponível no momento. Tente novamente mais tarde.',
         default => 'O Gemini retornou um erro inesperado (HTTP ' . $status . '). Tente novamente mais tarde.',
     };
+
+    $responseMessage = geminiResponseMessage($response);
+    return $responseMessage === '' ? $message : $message . ' Resposta do Gemini: ' . $responseMessage;
 }
 
 function throwGeminiRequestError(int $status, mixed $response, int $curlErrno, string $curlError, string $context): never
