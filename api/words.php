@@ -263,7 +263,27 @@ try {
     wordsRedirect('Ação inválida.', 'error');
 } catch (Throwable $exception) {
     if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
-    if ($exception->getCode() === '23000') wordsRedirect('Essa palavra já está cadastrada.', 'error');
-    error_log('Subdrill words database error: ' . $exception->getMessage());
+    $sqlState = (string) $exception->getCode();
+    $driverCode = $exception instanceof PDOException ? (int) ($exception->errorInfo[1] ?? 0) : 0;
+
+    if (in_array($action, ['create', 'update'], true) && ($sqlState === '23000' || $driverCode === 1062)) {
+        wordsRedirect('Essa palavra já está cadastrada.', 'error');
+    }
+
+    error_log('Subdrill words error (' . ($action ?: 'unknown') . '): ' . $exception->getMessage());
+
+    // A connection failure cannot be solved by submitting the form again. Keep
+    // the database detail in the server log, but give the user an actionable
+    // explanation instead of presenting it as a failed word validation.
+    if ($exception instanceof PDOException && str_starts_with($sqlState, '08')) {
+        wordsRedirect('Não foi possível acessar o banco de dados. Verifique a configuração do banco e tente novamente.', 'error');
+    }
+
+    if ($action === 'discover' || $action === 'generate_more') {
+        wordsRedirect('Não foi possível gerar as traduções agora. Tente novamente mais tarde.', 'error');
+    }
+    if ($action === 'generate_audio') {
+        wordsRedirect('Não foi possível gerar os áudios agora. Tente novamente mais tarde.', 'error');
+    }
     wordsRedirect('Não foi possível salvar a palavra agora. Tente novamente mais tarde.', 'error');
 }
