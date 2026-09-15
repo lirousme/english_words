@@ -33,6 +33,45 @@ function englishSentenceUsesExactTerm(string $sentence, string $term): bool
     return preg_match($pattern, $sentence) === 1;
 }
 
+/**
+ * Exception whose message is safe to show in the Words page.
+ *
+ * Gemini's response body can contain implementation details, so this exception
+ * exposes only a useful, actionable cause to the user.
+ */
+final class GeminiRequestException extends RuntimeException
+{
+}
+
+function geminiRequestErrorMessage(int $status, mixed $response, int $curlErrno): string
+{
+    if (!is_string($response)) {
+        if ($curlErrno === CURLE_OPERATION_TIMEDOUT) return 'A consulta ao Gemini demorou mais do que o permitido. Tente novamente em instantes.';
+        return 'Não foi possível conectar ao Gemini. Verifique a conexão do servidor e tente novamente.';
+    }
+
+    $body = json_decode($response, true);
+    $apiMessage = is_array($body) ? strtolower((string) ($body['error']['message'] ?? '')) : '';
+
+    return match ($status) {
+        400 => 'O Gemini recusou a solicitação. Verifique a configuração do modelo e tente novamente.',
+        401 => 'A chave da API do Gemini é inválida ou expirou. Confira GEMINI_API_KEY.',
+        403 => 'A chave da API do Gemini não tem permissão para usar este serviço. Confira a chave, a API habilitada e o faturamento do projeto.',
+        404 => 'O modelo configurado do Gemini não foi encontrado. Confira GEMINI_TRANSLATION_MODEL.',
+        429 => str_contains($apiMessage, 'billing')
+            ? 'A cota de uso do Gemini foi atingida. Verifique os créditos e o faturamento da chave antes de tentar novamente.'
+            : 'O Gemini atingiu um limite de uso (cota ou muitas solicitações). Aguarde alguns instantes e verifique os limites da chave.',
+        500, 502, 503, 504 => 'O Gemini está indisponível no momento. Tente novamente mais tarde.',
+        default => 'O Gemini retornou um erro inesperado (HTTP ' . $status . '). Tente novamente mais tarde.',
+    };
+}
+
+function throwGeminiRequestError(int $status, mixed $response, int $curlErrno, string $curlError, string $context): never
+{
+    error_log('Subdrill Gemini ' . $context . ' error: HTTP ' . $status . ' cURL ' . $curlErrno . ' ' . $curlError);
+    throw new GeminiRequestException(geminiRequestErrorMessage($status, $response, $curlErrno));
+}
+
 function synthesizeSentenceAudio(string $text, string $languageCode, string $voiceName): string
 {
     if (GOOGLE_CLOUD_API_KEY === '') throw new RuntimeException('A chave do Google Cloud não foi configurada.');
@@ -81,11 +120,11 @@ function discoverTranslations(string $word): array
     curl_setopt_array($curl, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => $payload, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 45]);
     $response = curl_exec($curl);
     $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+    $curlErrno = curl_errno($curl);
     $curlError = curl_error($curl);
     curl_close($curl);
     if (!is_string($response) || $status < 200 || $status >= 300) {
-        error_log('Subdrill Gemini translation error: HTTP ' . $status . ' ' . $curlError);
-        throw new RuntimeException('Não foi possível consultar o Gemini agora.');
+        throwGeminiRequestError($status, $response, $curlErrno, $curlError, 'translation');
     }
     $body = json_decode($response, true, 512, JSON_THROW_ON_ERROR);
     $text = $body['candidates'][0]['content']['parts'][0]['text'] ?? '';
@@ -140,11 +179,11 @@ function generateAdditionalSentences(string $word, string $translation, array $e
     curl_setopt_array($curl, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => $payload, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 45]);
     $response = curl_exec($curl);
     $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+    $curlErrno = curl_errno($curl);
     $curlError = curl_error($curl);
     curl_close($curl);
     if (!is_string($response) || $status < 200 || $status >= 300) {
-        error_log('Subdrill Gemini sentence generation error: HTTP ' . $status . ' ' . $curlError);
-        throw new RuntimeException('Não foi possível consultar o Gemini agora.');
+        throwGeminiRequestError($status, $response, $curlErrno, $curlError, 'sentence generation');
     }
     $body = json_decode($response, true, 512, JSON_THROW_ON_ERROR);
     $text = $body['candidates'][0]['content']['parts'][0]['text'] ?? '';
@@ -277,6 +316,11 @@ try {
     // explanation instead of presenting it as a failed word validation.
     if ($exception instanceof PDOException && str_starts_with($sqlState, '08')) {
         wordsRedirect('Não foi possível acessar o banco de dados. Verifique a configuração do banco e tente novamente.', 'error');
+    }
+
+    if ($exception instanceof GeminiRequestException) {
+        if ($action === 'generate_more') translationsRedirect((int) $id, $exception->getMessage(), 'error');
+        if ($action === 'discover') translationsRedirect((int) $id, $exception->getMessage(), 'error');
     }
 
     if ($action === 'discover' || $action === 'generate_more') {
