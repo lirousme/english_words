@@ -48,8 +48,8 @@ Arquitetura MPA (Multi-Page Application).
   - API Key do Google Cloud, fica no arquivo .env (GOOGLE_CLOUD_API_KEY).
   - define('GOOGLE_CLOUD_API_KEY', envValue('GOOGLE_CLOUD_API_KEY', ''));
 - ID das vozes:
-  - Português: 'pt-BR-Chirp3-HD-Algenib'
-  - Inglês: 'en-GB-Chirp3-HD-Achird'
+  - Português: 'pt-BR-Chirp3-HD-Algieba'
+  - Inglês: 'en-GB-Chirp3-HD-Algenib'
  
 - Armazenamento de áudios e imagens:
 - Os áudios e imagens devem ser convertidos para Base64 e salvos no banco de dados.
