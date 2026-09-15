@@ -40,7 +40,7 @@ function appBasePath(): string
     // Authentication endpoints are executed directly, so SCRIPT_NAME includes
     // /api/auth/login.php (or another nested file). Derive the public root from
     // the path of the executed file relative to this application instead of
-    // redirecting users to /api/auth/dashboard.
+    // redirecting users to an API subdirectory rather than an application route.
     $appDirectory = realpath(__DIR__);
     $scriptFile = realpath($_SERVER['SCRIPT_FILENAME'] ?? '');
     if ($appDirectory !== false && $scriptFile !== false) {
@@ -106,7 +106,7 @@ function currentUser(): ?array
 
 function requireGuest(): void
 {
-    if (currentUser()) { header('Location: ' . appUrl('dashboard')); exit; }
+    if (currentUser()) { header('Location: ' . appUrl('words')); exit; }
 }
 
 function requireAuth(): void
@@ -129,17 +129,15 @@ function pageFooter(): void { echo '</body></html>'; }
  * Use this pair on every authenticated page so navigation remains consistent
  * as new areas of the application are added.
  */
-function appShellHeader(string $title, string $activePage = 'dashboard'): void
+function appShellHeader(string $title, string $activePage = 'words'): void
 {
     $user = currentUser() ?? [];
     $displayName = $user['username'] ?? 'Conta';
     $initial = strtoupper(substr(trim($displayName), 0, 1) ?: 'S');
-    $dashboardUrl = htmlspecialchars(appUrl('dashboard'), ENT_QUOTES, 'UTF-8');
     $playUrl = htmlspecialchars(appUrl('jogar'), ENT_QUOTES, 'UTF-8');
     $wordsUrl = htmlspecialchars(appUrl('words'), ENT_QUOTES, 'UTF-8');
     $logoutUrl = htmlspecialchars(appUrl('logout'), ENT_QUOTES, 'UTF-8');
     $safeName = htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8');
-    $isDashboard = $activePage === 'dashboard';
     $isPlay = $activePage === 'play';
     $isWords = $activePage === 'words';
 
@@ -147,14 +145,13 @@ function appShellHeader(string $title, string $activePage = 'dashboard'): void
     echo '<a class="skip-link" href="#app-content">Pular para o conteúdo</a>';
     echo '<div class="app-shell">';
     echo '<aside class="app-sidebar" aria-label="Navegação principal">';
-    echo '<a class="app-brand" href="' . $dashboardUrl . '"><span aria-hidden="true">◈</span> Subdrill</a>';
+    echo '<a class="app-brand" href="' . $wordsUrl . '"><span aria-hidden="true">◈</span> Subdrill</a>';
     echo '<nav class="app-nav" aria-label="Áreas do aplicativo">';
-    echo '<a class="app-nav-link' . ($isDashboard ? ' is-active' : '') . '" href="' . $dashboardUrl . '"' . ($isDashboard ? ' aria-current="page"' : '') . '><span aria-hidden="true">⌂</span> Visão geral</a>';
     echo '<a class="app-nav-link' . ($isPlay ? ' is-active' : '') . '" href="' . $playUrl . '"' . ($isPlay ? ' aria-current="page"' : '') . '><span aria-hidden="true">▷</span> Jogar</a>';
     echo '<a class="app-nav-link' . ($isWords ? ' is-active' : '') . '" href="' . $wordsUrl . '"' . ($isWords ? ' aria-current="page"' : '') . '><span aria-hidden="true">▤</span> Words</a>';
     echo '</nav>';
     echo '<div class="sidebar-account"><span class="account-avatar" aria-hidden="true">' . htmlspecialchars($initial, ENT_QUOTES, 'UTF-8') . '</span><span class="account-name">' . $safeName . '</span><a href="' . $logoutUrl . '">Sair</a></div>';
-    echo '</aside><div class="app-main"><header class="app-topbar"><a class="app-brand app-brand-mobile" href="' . $dashboardUrl . '"><span aria-hidden="true">◈</span> Subdrill</a><span>' . $safeName . '</span></header><main class="app-content" id="app-content">';
+    echo '</aside><div class="app-main"><header class="app-topbar"><a class="app-brand app-brand-mobile" href="' . $wordsUrl . '"><span aria-hidden="true">◈</span> Subdrill</a><span>' . $safeName . '</span></header><main class="app-content" id="app-content">';
 }
 
 /** Closes markup opened by appShellHeader(). */

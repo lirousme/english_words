@@ -32,7 +32,10 @@ switch ($path) {
         if ($_SERVER['REQUEST_METHOD'] === 'POST') { require __DIR__ . '/api/auth/register.php'; }
         require __DIR__ . '/pages/register.php';
         break;
-    case '/dashboard': requireAuth(); require __DIR__ . '/pages/dashboard.php'; break;
+    case '/dashboard':
+        requireAuth();
+        header('Location: ' . appUrl('words'), true, 302);
+        exit;
     case '/jogar':
         requireAuth();
         if ($_SERVER['REQUEST_METHOD'] === 'POST') { require __DIR__ . '/api/reviews.php'; }

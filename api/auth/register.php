@@ -51,4 +51,4 @@ try {
 session_regenerate_id(true);
 $_SESSION['user'] = ['id' => $userId, 'username' => $username];
 unset($_SESSION['csrf'], $_SESSION['register_old']);
-header('Location: ' . appUrl('dashboard'));
+header('Location: ' . appUrl('words'));

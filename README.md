@@ -11,7 +11,7 @@
 
 O servidor precisa apontar o diretório público para esta pasta e permitir a
 leitura do `.htaccess`. Ele encaminha URLs como `/login`, `/criar-conta` e
-`/dashboard` para `index.php`; arquivos existentes, como CSS e APIs, continuam
+`/words` para `index.php`; arquivos existentes, como CSS e APIs, continuam
 acessíveis diretamente. Em Apache, habilite `mod_rewrite` e use
 `AllowOverride FileInfo Options` (ou `AllowOverride All`) para que URLs internas
 não retornem 404 antes de chegarem ao Front Controller.
@@ -23,7 +23,7 @@ defina-o com o caminho público real, por exemplo `APP_BASE_PATH=/english_words`
 /index.php
 /pages/
     login.html
-    dashboard.html
+    words.html
 /api/
 
 <?php
