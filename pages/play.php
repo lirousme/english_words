@@ -5,7 +5,6 @@ $user = currentUser() ?? [];
 $sentences = [];
 $translation = null;
 $error = '';
-$flash = $_SESSION['play_flash'] ?? null;
 unset($_SESSION['play_flash']);
 
 try {
@@ -32,11 +31,9 @@ try {
 appShellHeader('Jogar', 'play');
 ?>
 <section class="play-page">
-  <header class="play-header"><div><p class="eyebrow">REPETIÇÃO ESPAÇADA</p><h1>Jogar</h1><p>Estude todas as frases desta tradução antes de registrar uma nova revisão.</p></div></header>
-  <?php if ($flash): ?><div class="alert <?= $flash['type'] === 'success' ? 'alert-success' : '' ?>" role="alert"><?= htmlspecialchars($flash['message']) ?></div><?php endif; ?>
   <?php if ($error): ?><div class="alert" role="alert"><?= htmlspecialchars($error) ?></div><?php elseif ($translation && $sentences): ?>
     <section class="review-card" aria-labelledby="review-title">
-      <header><div><label class="auto-play-toggle" for="auto-play"><span>Automático</span><input id="auto-play" type="checkbox" role="switch" aria-label="Avançar slides automaticamente após os áudios"><span class="auto-play-track" aria-hidden="true"></span></label><h2 id="review-title"><?= htmlspecialchars($translation['portugues']) ?></h2></div><span id="slide-counter" aria-live="polite">1 de <?= count($sentences) ?></span></header>
+      <header><div><label class="auto-play-toggle" for="auto-play"><span>Automático</span><input id="auto-play" type="checkbox" role="switch" aria-label="Avançar slides automaticamente após os áudios" checked><span class="auto-play-track" aria-hidden="true"></span></label><h2 id="review-title"><?= htmlspecialchars($translation['portugues']) ?></h2></div><span id="slide-counter" aria-live="polite">1 de <?= count($sentences) ?></span></header>
       <div class="review-slides">
         <?php foreach ($sentences as $index => $sentence): ?><article class="review-slide<?= $index === 0 ? ' is-active' : '' ?>" data-slide data-audio-english="<?= htmlspecialchars((string) ($sentence['audio_en_gb'] ?? ''), ENT_QUOTES) ?>" data-audio-portuguese="<?= htmlspecialchars((string) ($sentence['audio_portugues'] ?? ''), ENT_QUOTES) ?>" aria-hidden="<?= $index === 0 ? 'false' : 'true' ?>"><p class="review-portuguese"><?= htmlspecialchars($sentence['frase_portugues']) ?></p><p class="review-english" lang="en"><?= htmlspecialchars($sentence['frase_ingles']) ?></p></article><?php endforeach; ?>
       </div>
@@ -50,10 +47,17 @@ appShellHeader('Jogar', 'play');
         const form = document.getElementById('review-form');
         const counter = document.getElementById('slide-counter');
         const autoPlay = document.getElementById('auto-play');
+        const autoPlayStorageKey = 'subdrill-auto-play';
         let current = 0;
         let activeAudio = null;
         let stopActivePlayback = null;
         let playbackId = 0;
+
+        const savedAutoPlay = localStorage.getItem(autoPlayStorageKey);
+        if (savedAutoPlay !== null) autoPlay.checked = savedAutoPlay === 'true';
+        autoPlay.addEventListener('change', () => {
+          localStorage.setItem(autoPlayStorageKey, String(autoPlay.checked));
+        });
 
         const stopAudio = () => {
           playbackId++;
