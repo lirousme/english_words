@@ -22,12 +22,14 @@ try {
     $userId = (int) ((currentUser() ?? [])['id'] ?? 0);
     $pdo = new PDO('mysql:host=' . env('DB_HOST') . ';dbname=' . env('DB_NAME') . ';charset=utf8mb4', env('DB_USER'), env('DB_PASS'), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]);
     $pdo->beginTransaction();
-    $review = $pdo->prepare('SELECT id, amount FROM reviews WHERE id_user = :user_id AND id_translation = :translation_id FOR UPDATE');
+    $review = $pdo->prepare('SELECT id, amount, next_review <= NOW() AS is_due FROM reviews WHERE id_user = :user_id AND id_translation = :translation_id FOR UPDATE');
     $review->execute(['user_id' => $userId, 'translation_id' => $translationId]);
     $existing = $review->fetch(PDO::FETCH_ASSOC) ?: null;
-    $eligible = $pdo->prepare('SELECT EXISTS (SELECT 1 FROM frases WHERE id_translation = :translation_id) AND (EXISTS (SELECT 1 FROM reviews WHERE id_user = :user_id AND id_translation = :translation_id AND next_review <= NOW()) OR NOT EXISTS (SELECT 1 FROM reviews WHERE id_user = :user_id AND id_translation = :translation_id))');
-    $eligible->execute(['user_id' => $userId, 'translation_id' => $translationId]);
-    if (!(bool) $eligible->fetchColumn()) { $pdo->rollBack(); playRedirect('Esta tradução não está disponível para revisão.', 'error'); }
+    $sentence = $pdo->prepare('SELECT EXISTS (SELECT 1 FROM frases WHERE id_translation = :translation_id)');
+    $sentence->execute(['translation_id' => $translationId]);
+    $hasSentences = (bool) $sentence->fetchColumn();
+    $isDue = $existing && (bool) $existing['is_due'];
+    if (!$hasSentences || ($existing && !$isDue)) { $pdo->rollBack(); playRedirect('Esta tradução não está disponível para revisão.', 'error'); }
 
     $amount = $existing ? (int) $existing['amount'] + 1 : 1;
     $nextReview = (new DateTimeImmutable('now'))->modify('+' . $amount . ' days')->format('Y-m-d H:i:s');

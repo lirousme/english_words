@@ -22,7 +22,7 @@ try {
     $total = (int) $count->fetchColumn();
     $pages = max(1, (int) ceil($total / $perPage));
     $page = min($page, $pages);
-    $statement = $pdo->prepare('SELECT id, word FROM words' . $where . ' ORDER BY word ASC LIMIT :limit OFFSET :offset');
+    $statement = $pdo->prepare('SELECT id, word FROM words' . $where . ' ORDER BY id DESC LIMIT :limit OFFSET :offset');
     if ($search !== '') $statement->bindValue(':search', '%' . $search . '%');
     $statement->bindValue(':limit', $perPage, PDO::PARAM_INT);
     $statement->bindValue(':offset', ($page - 1) * $perPage, PDO::PARAM_INT);

@@ -36,14 +36,92 @@ appShellHeader('Jogar', 'play');
   <?php if ($flash): ?><div class="alert <?= $flash['type'] === 'success' ? 'alert-success' : '' ?>" role="alert"><?= htmlspecialchars($flash['message']) ?></div><?php endif; ?>
   <?php if ($error): ?><div class="alert" role="alert"><?= htmlspecialchars($error) ?></div><?php elseif ($translation && $sentences): ?>
     <section class="review-card" aria-labelledby="review-title">
-      <header><p class="eyebrow">TRADUÇÃO</p><h2 id="review-title"><?= htmlspecialchars($translation['portugues']) ?></h2><span id="slide-counter" aria-live="polite">1 de <?= count($sentences) ?></span></header>
+      <header><div><label class="auto-play-toggle" for="auto-play"><span>Automático</span><input id="auto-play" type="checkbox" role="switch" aria-label="Avançar slides automaticamente após os áudios"><span class="auto-play-track" aria-hidden="true"></span></label><h2 id="review-title"><?= htmlspecialchars($translation['portugues']) ?></h2></div><span id="slide-counter" aria-live="polite">1 de <?= count($sentences) ?></span></header>
       <div class="review-slides">
         <?php foreach ($sentences as $index => $sentence): ?><article class="review-slide<?= $index === 0 ? ' is-active' : '' ?>" data-slide data-audio-english="<?= htmlspecialchars((string) ($sentence['audio_en_gb'] ?? ''), ENT_QUOTES) ?>" data-audio-portuguese="<?= htmlspecialchars((string) ($sentence['audio_portugues'] ?? ''), ENT_QUOTES) ?>" aria-hidden="<?= $index === 0 ? 'false' : 'true' ?>"><p class="review-portuguese"><?= htmlspecialchars($sentence['frase_portugues']) ?></p><p class="review-english" lang="en"><?= htmlspecialchars($sentence['frase_ingles']) ?></p></article><?php endforeach; ?>
       </div>
       <footer class="review-controls"><button class="button button-secondary" id="previous-slide" type="button" disabled>Previous</button><form id="review-form" method="post" action="<?= htmlspecialchars(appUrl('jogar')) ?>"><input type="hidden" name="csrf" value="<?= htmlspecialchars(csrfToken()) ?>"><input type="hidden" name="translation_id" value="<?= (int) $translation['id'] ?>"><button class="button" id="next-slide" type="button">Next</button></form></footer>
     </section>
     <script>
-      (() => { const slides = [...document.querySelectorAll('[data-slide]')], previous = document.getElementById('previous-slide'), next = document.getElementById('next-slide'), form = document.getElementById('review-form'), counter = document.getElementById('slide-counter'); let current = 0, activeAudio = null; const play = source => new Promise(resolve => { if (!source) return resolve(); const audio = new Audio(`data:audio/mpeg;base64,${source}`); activeAudio = audio; audio.addEventListener('ended', resolve, { once: true }); audio.addEventListener('error', resolve, { once: true }); audio.play().catch(resolve); }); const playSlideAudio = async slide => { if (activeAudio) { activeAudio.pause(); activeAudio = null; } await play(slide.dataset.audioEnglish); if (slides[current] === slide) await play(slide.dataset.audioPortuguese); }; const render = () => { slides.forEach((slide, index) => { const active = index === current; slide.classList.toggle('is-active', active); slide.setAttribute('aria-hidden', String(!active)); }); previous.disabled = current === 0; counter.textContent = `${current + 1} de ${slides.length}`; const last = current === slides.length - 1; next.textContent = last ? 'Review' : 'Next'; next.type = last ? 'submit' : 'button'; playSlideAudio(slides[current]); }; previous.addEventListener('click', () => { if (current > 0) { current--; render(); } }); next.addEventListener('click', () => { if (current < slides.length - 1) { current++; render(); } }); form.addEventListener('submit', event => { if (current !== slides.length - 1) event.preventDefault(); }); render(); })();
+      (() => {
+        const slides = [...document.querySelectorAll('[data-slide]')];
+        const previous = document.getElementById('previous-slide');
+        const next = document.getElementById('next-slide');
+        const form = document.getElementById('review-form');
+        const counter = document.getElementById('slide-counter');
+        const autoPlay = document.getElementById('auto-play');
+        let current = 0;
+        let activeAudio = null;
+        let stopActivePlayback = null;
+        let playbackId = 0;
+
+        const stopAudio = () => {
+          playbackId++;
+          if (activeAudio) activeAudio.pause();
+          if (stopActivePlayback) stopActivePlayback();
+          activeAudio = null;
+          stopActivePlayback = null;
+        };
+        const play = source => new Promise(resolve => {
+          if (!source) return resolve();
+          const audio = new Audio(`data:audio/mpeg;base64,${source}`);
+          activeAudio = audio;
+          let finished = false;
+          const finish = () => {
+            if (finished) return;
+            finished = true;
+            if (activeAudio === audio) activeAudio = null;
+            if (stopActivePlayback === finish) stopActivePlayback = null;
+            resolve();
+          };
+          stopActivePlayback = finish;
+          audio.addEventListener('ended', finish, { once: true });
+          audio.addEventListener('error', finish, { once: true });
+          audio.play().catch(finish);
+        });
+        const playSlideAudio = async (slide, id) => {
+          await play(slide.dataset.audioEnglish);
+          if (id !== playbackId || slides[current] !== slide) return;
+          await play(slide.dataset.audioPortuguese);
+          if (id !== playbackId || slides[current] !== slide || !autoPlay.checked) return;
+          if (current === slides.length - 1) form.requestSubmit();
+          else {
+            current++;
+            render();
+          }
+        };
+        const render = () => {
+          stopAudio();
+          slides.forEach((slide, index) => {
+            const active = index === current;
+            slide.classList.toggle('is-active', active);
+            slide.setAttribute('aria-hidden', String(!active));
+          });
+          previous.disabled = current === 0;
+          counter.textContent = `${current + 1} de ${slides.length}`;
+          next.textContent = current === slides.length - 1 ? 'Review' : 'Next';
+          const id = playbackId;
+          playSlideAudio(slides[current], id);
+        };
+
+        previous.addEventListener('click', () => {
+          if (current > 0) {
+            current--;
+            render();
+          }
+        });
+        next.addEventListener('click', () => {
+          if (current === slides.length - 1) form.requestSubmit();
+          else {
+            current++;
+            render();
+          }
+        });
+        form.addEventListener('submit', event => {
+          if (current !== slides.length - 1) event.preventDefault();
+        });
+        render();
+      })();
     </script>
   <?php else: ?><section class="review-empty"><strong>Nenhuma revisão disponível agora.</strong><span>Quando houver uma tradução vencida ou ainda não estudada com frases de exemplo, ela aparecerá aqui.</span></section><?php endif; ?>
 </section>
