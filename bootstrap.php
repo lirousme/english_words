@@ -118,7 +118,7 @@ function pageHeader(string $title): void
 {
     $safeTitle = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
     $stylesheet = appUrl('assets/css/app.css') . '?v=' . (string) (filemtime(__DIR__ . '/assets/css/app.css') ?: 0);
-    echo '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' . $safeTitle . ' · Subdrill</title><link rel="stylesheet" href="' . htmlspecialchars($stylesheet, ENT_QUOTES) . '"></head><body>';
+    echo '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' . $safeTitle . '</title><link rel="stylesheet" href="' . htmlspecialchars($stylesheet, ENT_QUOTES) . '"></head><body>';
 }
 
 function pageFooter(): void { echo '</body></html>'; }
