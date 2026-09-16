@@ -8,15 +8,21 @@ requireAuth();
 startSecureSession();
 if (!hash_equals($_SESSION['csrf'] ?? '', (string) ($_POST['csrf'] ?? ''))) { http_response_code(419); exit('Solicitação expirada.'); }
 
-function playRedirect(string $message, string $type = 'success'): never
+function playResponse(string $message, string $type = 'success', ?array $review = null): never
 {
+    if (str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json')) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['message' => $message, 'type' => $type, 'review' => $review], JSON_THROW_ON_ERROR);
+        exit;
+    }
+
     $_SESSION['play_flash'] = ['message' => $message, 'type' => $type];
     header('Location: ' . appUrl('jogar'));
     exit;
 }
 
 $translationId = filter_var($_POST['translation_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-if (!$translationId) playRedirect('Revisão inválida.', 'error');
+if (!$translationId) playResponse('Revisão inválida.', 'error');
 
 try {
     $userId = (int) ((currentUser() ?? [])['id'] ?? 0);
@@ -29,7 +35,7 @@ try {
     $sentence->execute(['translation_id' => $translationId]);
     $hasSentences = (bool) $sentence->fetchColumn();
     $isDue = $existing && (bool) $existing['is_due'];
-    if (!$hasSentences || ($existing && !$isDue)) { $pdo->rollBack(); playRedirect('Esta tradução não está disponível para revisão.', 'error'); }
+    if (!$hasSentences || ($existing && !$isDue)) { $pdo->rollBack(); playResponse('Esta tradução não está disponível para revisão.', 'error'); }
 
     $amount = $existing ? (int) $existing['amount'] + 1 : 1;
     $nextReview = (new DateTimeImmutable('now'))->modify('+' . $amount . ' days')->format('Y-m-d H:i:s');
@@ -41,9 +47,28 @@ try {
         $insert->execute(['user_id' => $userId, 'translation_id' => $translationId, 'amount' => $amount, 'next_review' => $nextReview]);
     }
     $pdo->commit();
-    playRedirect('Revisão registrada. A próxima ficará disponível em ' . $amount . ' ' . ($amount === 1 ? 'dia' : 'dias') . '.');
+    $message = 'Revisão registrada. A próxima ficará disponível em ' . $amount . ' ' . ($amount === 1 ? 'dia' : 'dias') . '.';
+
+    if (str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json')) {
+        $next = $pdo->prepare('SELECT t.id, t.portugues FROM reviews r INNER JOIN translations t ON t.id = r.id_translation WHERE r.id_user = :user_id AND r.next_review <= NOW() AND EXISTS (SELECT 1 FROM frases f WHERE f.id_translation = t.id) ORDER BY r.next_review ASC, r.id ASC LIMIT 1');
+        $next->execute(['user_id' => $userId]);
+        $translation = $next->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (!$translation) {
+            $next = $pdo->prepare('SELECT t.id, t.portugues FROM translations t WHERE NOT EXISTS (SELECT 1 FROM reviews r WHERE r.id_user = :user_id AND r.id_translation = t.id) AND EXISTS (SELECT 1 FROM frases f WHERE f.id_translation = t.id) ORDER BY t.id ASC LIMIT 1');
+            $next->execute(['user_id' => $userId]);
+            $translation = $next->fetch(PDO::FETCH_ASSOC) ?: null;
+        }
+        if ($translation) {
+            $sentences = $pdo->prepare('SELECT frase_portugues, frase_ingles, audio_portugues, audio_en_gb FROM frases WHERE id_translation = :id ORDER BY id ASC');
+            $sentences->execute(['id' => $translation['id']]);
+            $translation['sentences'] = $sentences->fetchAll(PDO::FETCH_ASSOC);
+        }
+        playResponse($message, 'success', $translation);
+    }
+
+    playResponse($message);
 } catch (Throwable $exception) {
     if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
     error_log('Subdrill review database error: ' . $exception->getMessage());
-    playRedirect('Não foi possível registrar a revisão agora. Tente novamente mais tarde.', 'error');
+    playResponse('Não foi possível registrar a revisão agora. Tente novamente mais tarde.', 'error');
 }
