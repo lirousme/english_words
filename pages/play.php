@@ -37,7 +37,7 @@ appShellHeader('Jogar', 'play');
       <div class="review-slides">
         <?php foreach ($sentences as $index => $sentence): ?><article class="review-slide<?= $index === 0 ? ' is-active' : '' ?>" data-slide data-audio-english="<?= htmlspecialchars((string) ($sentence['audio_en_gb'] ?? ''), ENT_QUOTES) ?>" data-audio-portuguese="<?= htmlspecialchars((string) ($sentence['audio_portugues'] ?? ''), ENT_QUOTES) ?>" aria-hidden="<?= $index === 0 ? 'false' : 'true' ?>"><p class="review-portuguese"><?= htmlspecialchars($sentence['frase_portugues']) ?></p><p class="review-english" lang="en"><?= htmlspecialchars($sentence['frase_ingles']) ?></p></article><?php endforeach; ?>
       </div>
-      <footer class="review-controls"><button class="button button-secondary" id="previous-slide" type="button" disabled>Previous</button><form id="review-form" method="post" action="<?= htmlspecialchars(appUrl('jogar')) ?>"><input type="hidden" name="csrf" value="<?= htmlspecialchars(csrfToken()) ?>"><input type="hidden" name="translation_id" value="<?= (int) $translation['id'] ?>"><button class="button" id="next-slide" type="button">Next</button></form></footer>
+      <footer class="review-controls"><button class="button button-secondary" id="previous-slide" type="button" disabled>Previous</button><button class="button button-secondary playback-toggle" id="playback-toggle" type="button" aria-label="Reproduzir áudio" title="Reproduzir áudio"><span aria-hidden="true">▶</span></button><form id="review-form" method="post" action="<?= htmlspecialchars(appUrl('jogar')) ?>"><input type="hidden" name="csrf" value="<?= htmlspecialchars(csrfToken()) ?>"><input type="hidden" name="translation_id" value="<?= (int) $translation['id'] ?>"><button class="button" id="next-slide" type="button">Next</button></form></footer>
       <p class="review-status" id="review-status" aria-live="polite"></p>
     </section>
     <script>
@@ -45,31 +45,42 @@ appShellHeader('Jogar', 'play');
         let slides = [...document.querySelectorAll('[data-slide]')];
         const previous = document.getElementById('previous-slide');
         const next = document.getElementById('next-slide');
+        const playbackToggle = document.getElementById('playback-toggle');
         const form = document.getElementById('review-form');
         const counter = document.getElementById('slide-counter');
         const autoPlay = document.getElementById('auto-play');
         const status = document.getElementById('review-status');
         const title = document.getElementById('review-title');
         const slidesContainer = document.querySelector('.review-slides');
-        const isMobile = /iPhone|iPod|Android.*Mobile/i.test(navigator.userAgent) || window.matchMedia('(max-width: 760px)').matches;
-        const autoPlayStorageKey = isMobile ? 'subdrill-auto-play-mobile' : 'subdrill-auto-play';
+        const autoPlayStorageKey = 'subdrill-auto-play';
         let current = 0;
         let activeAudio = null;
         let stopActivePlayback = null;
         let playbackId = 0;
+        let isPlaybackRunning = false;
+        let isPlaybackPaused = false;
 
         const savedAutoPlay = localStorage.getItem(autoPlayStorageKey);
-        autoPlay.checked = savedAutoPlay === null ? !isMobile : savedAutoPlay === 'true';
+        autoPlay.checked = savedAutoPlay === null ? true : savedAutoPlay === 'true';
         autoPlay.addEventListener('change', () => {
           localStorage.setItem(autoPlayStorageKey, String(autoPlay.checked));
         });
 
+        const updatePlaybackToggle = () => {
+          const isPlaying = isPlaybackRunning && !isPlaybackPaused;
+          playbackToggle.innerHTML = `<span aria-hidden="true">${isPlaying ? '❚❚' : '▶'}</span>`;
+          playbackToggle.setAttribute('aria-label', isPlaying ? 'Pausar áudio' : 'Reproduzir áudio');
+          playbackToggle.title = isPlaying ? 'Pausar áudio' : 'Reproduzir áudio';
+        };
         const stopAudio = () => {
           playbackId++;
           if (activeAudio) activeAudio.pause();
           if (stopActivePlayback) stopActivePlayback();
           activeAudio = null;
           stopActivePlayback = null;
+          isPlaybackRunning = false;
+          isPlaybackPaused = false;
+          updatePlaybackToggle();
         };
         const play = source => new Promise(resolve => {
           if (!source) return resolve();
@@ -92,15 +103,24 @@ appShellHeader('Jogar', 'play');
           await play(slide.dataset.audioEnglish);
           if (id !== playbackId || slides[current] !== slide) return;
           await play(slide.dataset.audioPortuguese);
-          if (id !== playbackId || slides[current] !== slide || !autoPlay.checked) return;
-          if (current === slides.length - 1) submitReview();
+          if (id !== playbackId || slides[current] !== slide) return;
+          if (!autoPlay.checked) {
+            isPlaybackRunning = false;
+            updatePlaybackToggle();
+            return;
+          }
+          if (current === slides.length - 1) {
+            isPlaybackRunning = false;
+            updatePlaybackToggle();
+            submitReview();
+          }
           else {
             current++;
             render();
+            playSlideAudio(slides[current], id);
           }
         };
         const render = () => {
-          stopAudio();
           slides.forEach((slide, index) => {
             const active = index === current;
             slide.classList.toggle('is-active', active);
@@ -109,8 +129,28 @@ appShellHeader('Jogar', 'play');
           previous.disabled = current === 0;
           counter.textContent = `${current + 1} de ${slides.length}`;
           next.textContent = current === slides.length - 1 ? 'Review' : 'Next';
+        };
+        const startPlayback = () => {
+          stopAudio();
           const id = playbackId;
+          isPlaybackRunning = true;
+          updatePlaybackToggle();
           playSlideAudio(slides[current], id);
+        };
+        const pauseOrResumePlayback = () => {
+          if (isPlaybackRunning && !isPlaybackPaused && activeAudio) {
+            activeAudio.pause();
+            isPlaybackPaused = true;
+            updatePlaybackToggle();
+            return;
+          }
+          if (isPlaybackRunning && isPlaybackPaused && activeAudio) {
+            isPlaybackPaused = false;
+            activeAudio.play().catch(() => stopAudio());
+            updatePlaybackToggle();
+            return;
+          }
+          startPlayback();
         };
         const replaceReview = review => {
           stopAudio();
@@ -167,13 +207,16 @@ appShellHeader('Jogar', 'play');
 
         previous.addEventListener('click', () => {
           if (current > 0) {
+            stopAudio();
             current--;
             render();
           }
         });
+        playbackToggle.addEventListener('click', pauseOrResumePlayback);
         next.addEventListener('click', () => {
           if (current === slides.length - 1) submitReview();
           else {
+            stopAudio();
             current++;
             render();
           }
