@@ -118,7 +118,7 @@ function pageHeader(string $title): void
 {
     $safeTitle = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
     $stylesheet = appUrl('assets/css/app.css') . '?v=' . (string) (filemtime(__DIR__ . '/assets/css/app.css') ?: 0);
-    echo '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><title>' . $safeTitle . '</title><link rel="stylesheet" href="' . htmlspecialchars($stylesheet, ENT_QUOTES) . '"></head><body>';
+    echo '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><title>' . $safeTitle . '</title><link rel="stylesheet" href="' . htmlspecialchars($stylesheet, ENT_QUOTES) . '"></head><body><script>(function(){var preventZoom=function(event){event.preventDefault();};document.addEventListener("gesturestart",preventZoom,{passive:false});document.addEventListener("gesturechange",preventZoom,{passive:false});document.addEventListener("gestureend",preventZoom,{passive:false});document.addEventListener("touchmove",function(event){if(event.touches.length>1)preventZoom(event);},{passive:false});})();</script>';
 }
 
 function pageFooter(): void { echo '</body></html>'; }

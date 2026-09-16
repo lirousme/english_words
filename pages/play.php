@@ -52,19 +52,17 @@ appShellHeader('Jogar', 'play');
         const status = document.getElementById('review-status');
         const title = document.getElementById('review-title');
         const slidesContainer = document.querySelector('.review-slides');
-        const autoPlayStorageKey = 'subdrill-auto-play';
         let current = 0;
         let activeAudio = null;
         let stopActivePlayback = null;
         let playbackId = 0;
         let isPlaybackRunning = false;
         let isPlaybackPaused = false;
+        let isLoadingNextReview = false;
 
-        const savedAutoPlay = localStorage.getItem(autoPlayStorageKey);
-        autoPlay.checked = savedAutoPlay === null ? true : savedAutoPlay === 'true';
-        autoPlay.addEventListener('change', () => {
-          localStorage.setItem(autoPlayStorageKey, String(autoPlay.checked));
-        });
+        // Cada sessão de revisão começa no modo automático; o usuário pode
+        // desligá-lo para avançar manualmente enquanto esta página estiver aberta.
+        autoPlay.checked = true;
 
         const updatePlaybackToggle = () => {
           const isPlaying = isPlaybackRunning && !isPlaybackPaused;
@@ -110,9 +108,7 @@ appShellHeader('Jogar', 'play');
             return;
           }
           if (current === slides.length - 1) {
-            isPlaybackRunning = false;
-            updatePlaybackToggle();
-            submitReview();
+            submitReview({ continuePlayback: true });
           }
           else {
             current++;
@@ -138,22 +134,22 @@ appShellHeader('Jogar', 'play');
           playSlideAudio(slides[current], id);
         };
         const pauseOrResumePlayback = () => {
-          if (isPlaybackRunning && !isPlaybackPaused && activeAudio) {
-            activeAudio.pause();
+          if (isPlaybackRunning && !isPlaybackPaused) {
+            if (activeAudio) activeAudio.pause();
             isPlaybackPaused = true;
             updatePlaybackToggle();
             return;
           }
-          if (isPlaybackRunning && isPlaybackPaused && activeAudio) {
+          if (isPlaybackRunning && isPlaybackPaused) {
             isPlaybackPaused = false;
-            activeAudio.play().catch(() => stopAudio());
+            if (activeAudio) activeAudio.play().catch(() => stopAudio());
+            else if (!isLoadingNextReview) playSlideAudio(slides[current], playbackId);
             updatePlaybackToggle();
             return;
           }
           startPlayback();
         };
         const replaceReview = review => {
-          stopAudio();
           current = 0;
           title.textContent = review.portugues;
           form.elements.translation_id.value = review.id;
@@ -177,9 +173,10 @@ appShellHeader('Jogar', 'play');
           slides = [...slidesContainer.querySelectorAll('[data-slide]')];
           render();
         };
-        const submitReview = async () => {
+        const submitReview = async ({ continuePlayback = false } = {}) => {
           if (next.disabled) return;
-          stopAudio();
+          if (!continuePlayback) stopAudio();
+          isLoadingNextReview = continuePlayback;
           next.disabled = true;
           status.textContent = 'Carregando próxima revisão…';
           try {
@@ -188,6 +185,10 @@ appShellHeader('Jogar', 'play');
             const result = await response.json();
             if (result.type !== 'success') throw new Error(result.message);
             if (!result.review) {
+              isLoadingNextReview = false;
+              isPlaybackRunning = false;
+              isPlaybackPaused = false;
+              updatePlaybackToggle();
               status.textContent = result.message;
               slidesContainer.replaceChildren();
               counter.textContent = '0 de 0';
@@ -197,7 +198,13 @@ appShellHeader('Jogar', 'play');
             }
             status.textContent = result.message;
             replaceReview(result.review);
+            isLoadingNextReview = false;
+            if (continuePlayback && isPlaybackRunning && !isPlaybackPaused && autoPlay.checked) {
+              playSlideAudio(slides[current], playbackId);
+            }
           } catch (error) {
+            isLoadingNextReview = false;
+            if (continuePlayback) stopAudio();
             status.textContent = error.message || 'Não foi possível carregar a próxima revisão.';
             render();
           } finally {
