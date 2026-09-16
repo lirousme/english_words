@@ -22,9 +22,8 @@ function normalizedWord(string $word): string
 
 function expectsJsonResponse(): bool
 {
-    return (string) ($_POST['response_format'] ?? '') === 'json'
-        || (($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest'
-            && str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json'));
+    return ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest'
+        && str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json');
 }
 
 function translationsRedirect(int $wordId, string $message, string $type = 'success'): never
