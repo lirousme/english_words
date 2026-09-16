@@ -20,6 +20,162 @@ function normalizedWord(string $word): string
     return preg_replace('/\s+/u', ' ', trim($word)) ?? '';
 }
 
+function normalizeEnglishContractions(string $sentence): string
+{
+    $sentence = preg_replace('/\s+/u', ' ', trim($sentence)) ?? '';
+
+    $replacements = [
+        // I
+        '/\bI am\b/u' => "I'm",
+        '/\bI have\b/u' => "I've",
+        '/\bI had\b/u' => "I'd",
+        '/\bI will\b/u' => "I'll",
+        '/\bI would\b/u' => "I'd",
+        '/\bI shall\b/u' => "I'll",
+
+        // You
+        '/\bYou are\b/u' => "You're",
+        '/\bYou have\b/u' => "You've",
+        '/\bYou had\b/u' => "You'd",
+        '/\bYou will\b/u' => "You'll",
+        '/\bYou would\b/u' => "You'd",
+
+        // He
+        '/\bHe is\b/u' => "He's",
+        '/\bHe has\b/u' => "He's",
+        '/\bHe had\b/u' => "He'd",
+        '/\bHe will\b/u' => "He'll",
+        '/\bHe would\b/u' => "He'd",
+
+        // She
+        '/\bShe is\b/u' => "She's",
+        '/\bShe has\b/u' => "She's",
+        '/\bShe had\b/u' => "She'd",
+        '/\bShe will\b/u' => "She'll",
+        '/\bShe would\b/u' => "She'd",
+
+        // It
+        '/\bIt is\b/u' => "It's",
+        '/\bIt has\b/u' => "It's",
+        '/\bIt had\b/u' => "It'd",
+        '/\bIt will\b/u' => "It'll",
+        '/\bIt would\b/u' => "It'd",
+
+        // We
+        '/\bWe are\b/u' => "We're",
+        '/\bWe have\b/u' => "We've",
+        '/\bWe had\b/u' => "We'd",
+        '/\bWe will\b/u' => "We'll",
+        '/\bWe would\b/u' => "We'd",
+
+        // They
+        '/\bThey are\b/u' => "They're",
+        '/\bThey have\b/u' => "They've",
+        '/\bThey had\b/u' => "They'd",
+        '/\bThey will\b/u' => "They'll",
+        '/\bThey would\b/u' => "They'd",
+
+        // There
+        '/\bThere is\b/u' => "There's",
+        '/\bThere has\b/u' => "There's",
+        '/\bThere are\b/u' => "There're",
+        '/\bThere have\b/u' => "There've",
+        '/\bThere had\b/u' => "There'd",
+        '/\bThere will\b/u' => "There'll",
+        '/\bThere would\b/u' => "There'd",
+
+        // That
+        '/\bThat is\b/u' => "That's",
+        '/\bThat has\b/u' => "That's",
+        '/\bThat had\b/u' => "That'd",
+        '/\bThat will\b/u' => "That'll",
+        '/\bThat would\b/u' => "That'd",
+
+        // Who
+        '/\bWho is\b/u' => "Who's",
+        '/\bWho has\b/u' => "Who's",
+        '/\bWho had\b/u' => "Who'd",
+        '/\bWho will\b/u' => "Who'll",
+        '/\bWho would\b/u' => "Who'd",
+
+        // What
+        '/\bWhat is\b/u' => "What's",
+        '/\bWhat has\b/u' => "What's",
+        '/\bWhat had\b/u' => "What'd",
+        '/\bWhat will\b/u' => "What'll",
+        '/\bWhat would\b/u' => "What'd",
+
+        // Where
+        '/\bWhere is\b/u' => "Where's",
+        '/\bWhere has\b/u' => "Where's",
+        '/\bWhere had\b/u' => "Where'd",
+        '/\bWhere will\b/u' => "Where'll",
+        '/\bWhere would\b/u' => "Where'd",
+
+        // When
+        '/\bWhen is\b/u' => "When's",
+        '/\bWhen has\b/u' => "When's",
+        '/\bWhen had\b/u' => "When'd",
+        '/\bWhen will\b/u' => "When'll",
+        '/\bWhen would\b/u' => "When'd",
+
+        // Why
+        '/\bWhy is\b/u' => "Why's",
+        '/\bWhy has\b/u' => "Why's",
+        '/\bWhy had\b/u' => "Why'd",
+        '/\bWhy will\b/u' => "Why'll",
+        '/\bWhy would\b/u' => "Why'd",
+
+        // How
+        '/\bHow is\b/u' => "How's",
+        '/\bHow has\b/u' => "How's",
+        '/\bHow had\b/u' => "How'd",
+        '/\bHow will\b/u' => "How'll",
+        '/\bHow would\b/u' => "How'd",
+
+        // Modals + have
+        '/\bcould have\b/u' => "could've",
+        '/\bshould have\b/u' => "should've",
+        '/\bwould have\b/u' => "would've",
+        '/\bmight have\b/u' => "might've",
+        '/\bmust have\b/u' => "must've",
+        '/\bmay have\b/u' => "may've",
+        '/\bcan have\b/u' => "can've",
+
+        // Negatives
+        '/\bdo not\b/u' => "don't",
+        '/\bdoes not\b/u' => "doesn't",
+        '/\bdid not\b/u' => "didn't",
+        '/\bis not\b/u' => "isn't",
+        '/\bare not\b/u' => "aren't",
+        '/\bam not\b/u' => "I'm not",
+        '/\bwas not\b/u' => "wasn't",
+        '/\bwere not\b/u' => "weren't",
+        '/\bhas not\b/u' => "hasn't",
+        '/\bhave not\b/u' => "haven't",
+        '/\bhad not\b/u' => "hadn't",
+        '/\bwill not\b/u' => "won't",
+        '/\bwould not\b/u' => "wouldn't",
+        '/\bcould not\b/u' => "couldn't",
+        '/\bshould not\b/u' => "shouldn't",
+        '/\bmight not\b/u' => "mightn't",
+        '/\bmust not\b/u' => "mustn't",
+        '/\bneed not\b/u' => "needn't",
+        '/\bdare not\b/u' => "daren't",
+        '/\bused to not\b/u' => "used not to",
+
+        // Cannot / can not
+        '/\bcannot\b/u' => "can't",
+        '/\bcan not\b/u' => "can't",
+    ];
+
+    foreach ($replacements as $pattern => $replacement) {
+        $sentence = preg_replace($pattern, $replacement, $sentence) ?? $sentence;
+    }
+
+    return $sentence;
+}
+
 function translationsRedirect(int $wordId, string $message, string $type = 'success'): never
 {
     $_SESSION['words_flash'] = ['message' => $message, 'type' => $type];
@@ -71,9 +227,9 @@ function discoverTranslations(string $word): array
     $prompt = "Você é um dicionário inglês-português. Encontre todas as traduções usuais possíveis em português brasileiro da palavra ou expressão inglesa exatamente como fornecida entre <termo> e </termo>.\n\n<termo>{$word}</termo>\n\n"
         . "Regra crítica: traduza ipsis litteris somente o termo dentro das tags. Não acrescente, remova, complete ou altere palavras. Por exemplo, se o termo for 'get', não inclua sentidos de 'get off'; se for 'get off', não inclua sentidos de apenas 'get'.\n"
         . "Classifique cada tradução com type: 1 verbo/phrasal verb/locução verbal; 2 substantivo/locução substantiva; 3 conjunção/locução conjuntiva; 4 advérbio/locução adverbial; 5 adjetivo/locução adjetiva; 6 preposição/locução prepositiva.\n"
-        . "Para cada tradução, crie exatamente uma frase curta, coloquial e natural de exemplo. A frase em inglês deve usar o termo de <termo> com o mesmo sentido, sem flexioná-lo, substituí-lo ou acrescentar palavras ao termo; porém, se ele fizer parte de uma contração natural, use a forma contraída em vez da grafia ipsis litteris. A frase em português deve ser a tradução dessa mesma frase.\n"
+        . "Para cada tradução, crie exatamente uma frase curta, coloquial e natural de exemplo. A frase em inglês deve usar o termo de <termo> ipsis litteris, sem flexioná-lo ou substituí-lo, e a frase em português deve ser a tradução dessa mesma frase.\n"
         . "Idioma é uma regra crítica e inegociável: o valor de frase_ingles deve estar 100% em inglês, e o valor de frase_portugues deve estar 100% em português brasileiro. Nunca misture os idiomas em uma frase: em especial, não deixe o termo em inglês dentro de frase_portugues; traduza-o naturalmente para o português.\n"
-        . "Escreva a frase em inglês como um falante nativo a diria em uma conversa. Use sempre as contrações naturais e comuns cabíveis, em vez de qualquer forma expandida, incluindo quando a palavra que seria contraída fizer parte do termo de <termo>: por exemplo, use 'I'll' em vez de 'I will', 'I've' em vez de 'I have', 'I've been' em vez de 'I have been', 'don't' em vez de 'do not', 'can't' em vez de 'cannot', 'she's' em vez de 'she is' e 'we're' em vez de 'we are'. Esta regra vale para todas as contrações possíveis, não apenas para estes exemplos, e não há exceção para o termo de <termo>: preserve o seu sentido na frase, mas contraia-o quando o uso natural do inglês exigir.\n"
+        . "Escreva a frase em inglês como um falante nativo a diria em uma conversa. Priorize sempre contrações naturais e comuns em vez das formas expandidas: use, por exemplo, 'I'll' em vez de 'I will', 'I've' em vez de 'I have', 'don't' em vez de 'do not' e 'can't' em vez de 'cannot'.\n"
         . "Identifique também phrasal verbs ou locuções inglesas usuais diretamente formados a partir do termo, se existirem. Liste somente expressões diferentes do termo que devem ser estudadas separadamente; por exemplo, para 'get', inclua 'get off' quando for uma expressão usual, mas nunca misture os seus sentidos às traduções de 'get'. Não inclua palavras isoladas, flexões, sinônimos, traduções nem expressões inventadas.\n"
         . 'Retorne somente JSON válido, sem markdown, no formato {"translations":[{"portugues":"...","type":1,"frase_portugues":"...","frase_ingles":"..."}],"related_expressions":["..."]}. Use apenas traduções e frases em português brasileiro; não explique nada e não repita itens.';
     $payload = json_encode(['contents' => [['parts' => [['text' => $prompt]]]]], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
@@ -98,10 +254,39 @@ function discoverTranslations(string $word): array
     foreach ($result['translations'] as $item) {
         $translation = preg_replace('/\s+/u', ' ', trim(is_array($item) ? (string) ($item['portugues'] ?? '') : '')) ?? '';
         $portugueseSentence = preg_replace('/\s+/u', ' ', trim(is_array($item) ? (string) ($item['frase_portugues'] ?? '') : '')) ?? '';
-        $englishSentence = preg_replace('/\s+/u', ' ', trim(is_array($item) ? (string) ($item['frase_ingles'] ?? '') : '')) ?? '';
-        $type = is_array($item) ? filter_var($item['type'] ?? null, FILTER_VALIDATE_INT) : false;
-        if ($translation === '' || mb_strlen($translation) > 255 || $portugueseSentence === '' || $englishSentence === '' || mb_strlen($portugueseSentence) > 2000 || mb_strlen($englishSentence) > 2000 || !englishSentenceUsesExactTerm($englishSentence, $word) || !is_int($type) || $type < 1 || $type > 6) continue;
-        $translations[$type . ':' . mb_strtolower($translation)] = ['portugues' => $translation, 'type' => $type, 'frase_portugues' => $portugueseSentence, 'frase_ingles' => $englishSentence];
+        $englishSentence = preg_replace(
+    '/\s+/u',
+    ' ',
+    trim(is_array($item) ? (string) ($item['frase_ingles'] ?? '') : '')
+) ?? '';
+
+$type = is_array($item) ? filter_var($item['type'] ?? null, FILTER_VALIDATE_INT) : false;
+
+// Primeiro valida a frase ORIGINAL gerada pelo Gemini.
+if (
+    $translation === '' ||
+    mb_strlen($translation) > 255 ||
+    $portugueseSentence === '' ||
+    $englishSentence === '' ||
+    mb_strlen($portugueseSentence) > 2000 ||
+    mb_strlen($englishSentence) > 2000 ||
+    !englishSentenceUsesExactTerm($englishSentence, $word) ||
+    !is_int($type) ||
+    $type < 1 ||
+    $type > 6
+) {
+    continue;
+}
+
+// Somente depois da validação aplica as contrações.
+$englishSentence = normalizeEnglishContractions($englishSentence);
+
+$translations[$type . ':' . mb_strtolower($translation)] = [
+    'portugues' => $translation,
+    'type' => $type,
+    'frase_portugues' => $portugueseSentence,
+    'frase_ingles' => $englishSentence
+];
     }
     if ($translations === []) throw new RuntimeException('O Gemini não encontrou traduções válidas para esta palavra.');
 
@@ -131,9 +316,9 @@ function generateAdditionalSentences(string $word, string $translation, array $e
     $model = env('GEMINI_TRANSLATION_MODEL', 'gemini-3.5-flash-lite');
     $baseUrl = rtrim(env('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/models'), '/');
     $prompt = "Você cria frases de exemplo para um dicionário inglês-português. A palavra ou expressão inglesa original é <termo>{$word}</termo> e a tradução em português brasileiro é <traducao>{$translation}</traducao>.\n\n"
-        . "Crie exatamente {$quantity} novas frases curtas, coloquiais, naturais e distintas para esse sentido da tradução. Cada frase em inglês deve conter o termo de <termo> com o mesmo sentido, sem flexioná-lo, substituí-lo ou acrescentar palavras ao termo; porém, se ele fizer parte de uma contração natural, use a forma contraída em vez da grafia ipsis litteris. Cada frase em português deve traduzir a respectiva frase em inglês e usar o sentido de <traducao>.\n"
+        . "Crie exatamente {$quantity} novas frases curtas, coloquiais, naturais e distintas para esse sentido da tradução. Cada frase em inglês deve conter o termo de <termo> ipsis litteris, sem flexioná-lo, substituí-lo ou acrescentar palavras ao termo. Cada frase em português deve traduzir a respectiva frase em inglês e usar o sentido de <traducao>.\n"
         . "Idioma é uma regra crítica e inegociável: frase_ingles deve estar 100% em inglês, e frase_portugues deve estar 100% em português brasileiro. Nunca misture idiomas; especialmente, jamais inclua o termo de <termo> em inglês dentro de frase_portugues — use somente a tradução natural em português.\n"
-        . "Escreva cada frase em inglês como um falante nativo a diria em uma conversa. Use sempre as contrações naturais e comuns cabíveis, em vez de qualquer forma expandida, incluindo quando a palavra que seria contraída fizer parte do termo de <termo>: por exemplo, use 'I'll' em vez de 'I will', 'I've' em vez de 'I have', 'I've been' em vez de 'I have been', 'don't' em vez de 'do not', 'can't' em vez de 'cannot', 'she's' em vez de 'she is' e 'we're' em vez de 'we are'. Esta regra vale para todas as contrações possíveis, não apenas para estes exemplos, e não há exceção para o termo de <termo>: preserve o seu sentido na frase, mas contraia-o quando o uso natural do inglês exigir. Não repita nem reformule as frases já existentes abaixo: {$existingJson}\n\n"
+        . "Escreva cada frase em inglês como um falante nativo a diria em uma conversa. Priorize sempre contrações naturais e comuns: use, por exemplo, 'I'll' em vez de 'I will', 'I've' em vez de 'I have', 'don't' em vez de 'do not' e 'can't' em vez de 'cannot'. Não repita nem reformule as frases já existentes abaixo: {$existingJson}\n\n"
         . 'Retorne somente JSON válido, sem markdown, no formato {"sentences":[{"frase_portugues":"...","frase_ingles":"..."}]}. Não explique nada.';
     $payload = json_encode(['contents' => [['parts' => [['text' => $prompt]]]]], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     $curl = curl_init($baseUrl . '/' . rawurlencode($model) . ':generateContent?key=' . rawurlencode($apiKey));
@@ -159,8 +344,10 @@ function generateAdditionalSentences(string $word, string $translation, array $e
     foreach ($result['sentences'] as $item) {
         $portugueseSentence = preg_replace('/\s+/u', ' ', trim(is_array($item) ? (string) ($item['frase_portugues'] ?? '') : '')) ?? '';
         $englishSentence = preg_replace('/\s+/u', ' ', trim(is_array($item) ? (string) ($item['frase_ingles'] ?? '') : '')) ?? '';
-        $key = mb_strtolower($englishSentence);
-        if ($portugueseSentence === '' || $englishSentence === '' || mb_strlen($portugueseSentence) > 2000 || mb_strlen($englishSentence) > 2000 || !englishSentenceUsesExactTerm($englishSentence, $word) || isset($known[$key])) continue;
+$englishSentence = normalizeEnglishContractions($englishSentence);
+$key = mb_strtolower($englishSentence);
+
+if ($portugueseSentence === '' || $englishSentence === '' || mb_strlen($portugueseSentence) > 2000 || mb_strlen($englishSentence) > 2000 || !englishSentenceUsesExactTerm($englishSentence, $word) || isset($known[$key])) continue;
         $known[$key] = true;
         $sentences[] = ['frase_portugues' => $portugueseSentence, 'frase_ingles' => $englishSentence];
     }
@@ -263,27 +450,7 @@ try {
     wordsRedirect('Ação inválida.', 'error');
 } catch (Throwable $exception) {
     if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
-    $sqlState = (string) $exception->getCode();
-    $driverCode = $exception instanceof PDOException ? (int) ($exception->errorInfo[1] ?? 0) : 0;
-
-    if (in_array($action, ['create', 'update'], true) && ($sqlState === '23000' || $driverCode === 1062)) {
-        wordsRedirect('Essa palavra já está cadastrada.', 'error');
-    }
-
-    error_log('Subdrill words error (' . ($action ?: 'unknown') . '): ' . $exception->getMessage());
-
-    // A connection failure cannot be solved by submitting the form again. Keep
-    // the database detail in the server log, but give the user an actionable
-    // explanation instead of presenting it as a failed word validation.
-    if ($exception instanceof PDOException && str_starts_with($sqlState, '08')) {
-        wordsRedirect('Não foi possível acessar o banco de dados. Verifique a configuração do banco e tente novamente.', 'error');
-    }
-
-    if ($action === 'discover' || $action === 'generate_more') {
-        wordsRedirect('Não foi possível gerar as traduções agora. Tente novamente mais tarde.', 'error');
-    }
-    if ($action === 'generate_audio') {
-        wordsRedirect('Não foi possível gerar os áudios agora. Tente novamente mais tarde.', 'error');
-    }
+    if ($exception->getCode() === '23000') wordsRedirect('Essa palavra já está cadastrada.', 'error');
+    error_log('Subdrill words database error: ' . $exception->getMessage());
     wordsRedirect('Não foi possível salvar a palavra agora. Tente novamente mais tarde.', 'error');
 }
