@@ -57,3 +57,19 @@ Arquitetura MPA (Multi-Page Application).
  
 - Armazenamento de áudios e imagens:
 - Os áudios e imagens devem ser convertidos para Base64 e salvos no banco de dados.
+
+## Cadastro manual e importação de traduções
+
+Na página **Words**, abra uma palavra para adicionar manualmente uma tradução, sua
+classe gramatical e uma frase em inglês com sua correspondente em português. Se
+já houver a mesma tradução para aquela palavra, a nova frase é anexada à tradução
+existente.
+
+Também é possível importar um CSV sem cabeçalho. Cada linha deve ter exatamente
+quatro colunas, nesta ordem: `palavra`, `tradução`, `frase em inglês`, `frase em
+português`. O arquivo pode usar vírgula ou ponto e vírgula como separador; valores
+que contêm o separador devem ser colocados entre aspas. A primeira linha é sempre
+tratada como dado, não como cabeçalho. A importação cria palavras e traduções que
+ainda não existirem e anexa as frases às traduções já existentes para a mesma
+palavra. Traduções importadas recebem inicialmente a classe **substantivo**,
+pois o formato de quatro colunas não inclui a classe gramatical.

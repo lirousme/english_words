@@ -348,10 +348,98 @@ if ($portugueseSentence === '' || $englishSentence === '' || mb_strlen($portugue
     return $sentences;
 }
 
+/** @return array{word: string, translation: string, english: string, portuguese: string}|null */
+function csvImportRow(array $columns, int $line): ?array
+{
+    if ($line === 1 && isset($columns[0])) $columns[0] = preg_replace('/^\xEF\xBB\xBF/u', '', (string) $columns[0]) ?? (string) $columns[0];
+    if (count($columns) !== 4) throw new RuntimeException("A linha {$line} deve ter exatamente 4 colunas.");
+
+    [$rawWord, $rawTranslation, $rawEnglish, $rawPortuguese] = array_map(static fn($value): string => is_string($value) ? $value : '', $columns);
+    $word = normalizedWord($rawWord);
+    $translation = normalizedWord($rawTranslation);
+    $english = preg_replace('/\s+/u', ' ', trim($rawEnglish)) ?? '';
+    $portuguese = preg_replace('/\s+/u', ' ', trim($rawPortuguese)) ?? '';
+
+    if ($word === '' && $translation === '' && $english === '' && $portuguese === '') return null;
+    if ($word === '' || mb_strlen($word) > 150 || preg_match('/[\x00-\x1F\x7F]/u', $word)) throw new RuntimeException("A palavra na linha {$line} é inválida.");
+    if ($translation === '' || mb_strlen($translation) > 255 || preg_match('/[\x00-\x1F\x7F]/u', $translation)) throw new RuntimeException("A tradução na linha {$line} é inválida.");
+    if ($english === '' || $portuguese === '' || mb_strlen($english) > 2000 || mb_strlen($portuguese) > 2000 || preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', $english . $portuguese)) throw new RuntimeException("As frases na linha {$line} são inválidas.");
+
+    return ['word' => $word, 'translation' => $translation, 'english' => $english, 'portuguese' => $portuguese];
+}
+
+/** @return array{validRows: int, delimiter: string} */
+function validateCsvImport(string $path): array
+{
+    $file = fopen($path, 'rb');
+    if ($file === false) throw new RuntimeException('Não foi possível abrir a planilha enviada.');
+    $firstLine = fgets($file);
+    if ($firstLine === false) throw new RuntimeException('A planilha está vazia.');
+    $delimiter = substr_count($firstLine, ';') > substr_count($firstLine, ',') ? ';' : ',';
+    rewind($file);
+    $validRows = 0;
+    $line = 0;
+    while (($columns = fgetcsv($file, 0, $delimiter, '"', '\\')) !== false) {
+        $line++;
+        if (csvImportRow($columns, $line) !== null) $validRows++;
+    }
+    fclose($file);
+    if ($validRows === 0) throw new RuntimeException('A planilha não contém registros válidos.');
+    return ['validRows' => $validRows, 'delimiter' => $delimiter];
+}
+
+function importCsvTranslations(PDO $pdo, string $path): int
+{
+    $validation = validateCsvImport($path);
+    $file = fopen($path, 'rb');
+    if ($file === false) throw new RuntimeException('Não foi possível abrir a planilha enviada.');
+
+    $upsertWord = $pdo->prepare('INSERT INTO words (word) VALUES (:word) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)');
+    $findTranslation = $pdo->prepare('SELECT id FROM translations WHERE id_word = :id_word AND portugues = :portugues ORDER BY id ASC LIMIT 1');
+    $insertTranslation = $pdo->prepare('INSERT INTO translations (id_word, portugues, `type`) VALUES (:id_word, :portugues, 2)');
+    $insertSentence = $pdo->prepare('INSERT INTO frases (id_translation, frase_portugues, frase_ingles) VALUES (:id_translation, :frase_portugues, :frase_ingles)');
+    $line = 0;
+    $imported = 0;
+    $inBatch = false;
+
+    try {
+        while (($columns = fgetcsv($file, 0, $validation['delimiter'], '"', '\\')) !== false) {
+            $line++;
+            $row = csvImportRow($columns, $line);
+            if ($row === null) continue;
+            if (!$inBatch) { $pdo->beginTransaction(); $inBatch = true; }
+
+            $upsertWord->execute(['word' => $row['word']]);
+            $wordId = (int) $pdo->lastInsertId();
+            $findTranslation->execute(['id_word' => $wordId, 'portugues' => $row['translation']]);
+            $storedTranslationId = $findTranslation->fetchColumn();
+            if ($storedTranslationId === false) {
+                $insertTranslation->execute(['id_word' => $wordId, 'portugues' => $row['translation']]);
+                $storedTranslationId = (int) $pdo->lastInsertId();
+            }
+            $insertSentence->execute(['id_translation' => $storedTranslationId, 'frase_portugues' => $row['portuguese'], 'frase_ingles' => $row['english']]);
+            $imported++;
+            if ($imported % 1000 === 0) { $pdo->commit(); $inBatch = false; }
+        }
+        if ($inBatch) $pdo->commit();
+    } catch (Throwable $exception) {
+        if ($inBatch && $pdo->inTransaction()) $pdo->rollBack();
+        throw $exception;
+    } finally {
+        fclose($file);
+    }
+
+    return $imported;
+}
+
 $action = (string) ($_POST['action'] ?? '');
 $id = filter_var($_POST['id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 $translationId = filter_var($_POST['translation_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 $word = normalizedWord((string) ($_POST['word'] ?? ''));
+$translation = normalizedWord((string) ($_POST['translation'] ?? ''));
+$englishSentence = preg_replace('/\s+/u', ' ', trim((string) ($_POST['english_sentence'] ?? ''))) ?? '';
+$portugueseSentence = preg_replace('/\s+/u', ' ', trim((string) ($_POST['portuguese_sentence'] ?? ''))) ?? '';
+$translationType = filter_var($_POST['translation_type'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 6]]);
 
 if (in_array($action, ['create', 'update'], true) && ($word === '' || mb_strlen($word) > 150 || preg_match('/[\x00-\x1F\x7F]/u', $word))) {
     wordsRedirect('Informe uma palavra válida de até 150 caracteres.', 'error');
@@ -359,6 +447,8 @@ if (in_array($action, ['create', 'update'], true) && ($word === '' || mb_strlen(
 if (in_array($action, ['update', 'delete'], true) && !$id) wordsRedirect('Palavra inválida.', 'error');
 if ($action === 'discover' && !$id) wordsRedirect('Palavra inválida.', 'error');
 if ($action === 'generate_more' && (!$id || !$translationId)) wordsRedirect('Tradução inválida.', 'error');
+if ($action === 'manual_translation' && (!$id || $translation === '' || mb_strlen($translation) > 255 || preg_match('/[\x00-\x1F\x7F]/u', $translation) || !$translationType || $englishSentence === '' || $portugueseSentence === '' || mb_strlen($englishSentence) > 2000 || mb_strlen($portugueseSentence) > 2000 || preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', $englishSentence . $portugueseSentence))) translationsRedirect((int) $id, 'Informe uma tradução, a classe e as duas frases válidas.', 'error');
+if ($action === 'import_csv' && (!isset($_FILES['csv_file']) || !is_array($_FILES['csv_file']) || (int) ($_FILES['csv_file']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_uploaded_file((string) ($_FILES['csv_file']['tmp_name'] ?? '')))) wordsRedirect('Envie uma planilha CSV válida.', 'error');
 
 try {
     $pdo = new PDO('mysql:host=' . env('DB_HOST') . ';dbname=' . env('DB_NAME') . ';charset=utf8mb4', env('DB_USER'), env('DB_PASS'), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]);
@@ -379,6 +469,28 @@ try {
         $statement = $pdo->prepare('DELETE FROM words WHERE id = :id');
         $statement->execute(['id' => $id]);
         wordsRedirect($statement->rowCount() ? 'Palavra removida com sucesso.' : 'Palavra não encontrada.', $statement->rowCount() ? 'success' : 'error');
+    }
+    if ($action === 'import_csv') {
+        $imported = importCsvTranslations($pdo, (string) $_FILES['csv_file']['tmp_name']);
+        wordsRedirect($imported . ' registro' . ($imported === 1 ? '' : 's') . ' importado' . ($imported === 1 ? '' : 's') . ' com sucesso.');
+    }
+    if ($action === 'manual_translation') {
+        $wordStatement = $pdo->prepare('SELECT id FROM words WHERE id = :id');
+        $wordStatement->execute(['id' => $id]);
+        if ($wordStatement->fetchColumn() === false) translationsRedirect((int) $id, 'Palavra não encontrada.', 'error');
+        $pdo->beginTransaction();
+        $findTranslation = $pdo->prepare('SELECT id FROM translations WHERE id_word = :id_word AND portugues = :portugues ORDER BY id ASC LIMIT 1');
+        $findTranslation->execute(['id_word' => $id, 'portugues' => $translation]);
+        $existingTranslationId = $findTranslation->fetchColumn();
+        if ($existingTranslationId === false) {
+            $insertTranslation = $pdo->prepare('INSERT INTO translations (id_word, portugues, `type`) VALUES (:id_word, :portugues, :type)');
+            $insertTranslation->execute(['id_word' => $id, 'portugues' => $translation, 'type' => $translationType]);
+            $existingTranslationId = (int) $pdo->lastInsertId();
+        }
+        $insertSentence = $pdo->prepare('INSERT INTO frases (id_translation, frase_portugues, frase_ingles) VALUES (:id_translation, :frase_portugues, :frase_ingles)');
+        $insertSentence->execute(['id_translation' => $existingTranslationId, 'frase_portugues' => $portugueseSentence, 'frase_ingles' => $englishSentence]);
+        $pdo->commit();
+        translationsRedirect((int) $id, 'Tradução e frase adicionadas com sucesso.');
     }
     if ($action === 'generate_more') {
         $translationStatement = $pdo->prepare('SELECT translations.id, words.word, translations.portugues FROM translations INNER JOIN words ON words.id = translations.id_word WHERE translations.id = :translation_id AND translations.id_word = :word_id');
