@@ -29,6 +29,7 @@ define('GEMINI_API_KEY', envValue('GEMINI_API_KEY', ''));
 define('GEMINI_API_URL', envValue('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/models'));
 define('GEMINI_TRANSLATION_MODEL', envValue('GEMINI_TRANSLATION_MODEL', 'gemini-3.5-flash-lite'));
 define('GOOGLE_CLOUD_API_KEY', envValue('GOOGLE_CLOUD_API_KEY', ''));
+define('MIN_REVIEW_SLIDES', 10);
 
 function appBasePath(): string
 {

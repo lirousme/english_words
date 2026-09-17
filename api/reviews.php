@@ -31,11 +31,11 @@ try {
     $review = $pdo->prepare('SELECT id, amount, next_review <= NOW() AS is_due FROM reviews WHERE id_user = :user_id AND id_translation = :translation_id FOR UPDATE');
     $review->execute(['user_id' => $userId, 'translation_id' => $translationId]);
     $existing = $review->fetch(PDO::FETCH_ASSOC) ?: null;
-    $sentence = $pdo->prepare('SELECT EXISTS (SELECT 1 FROM frases WHERE id_translation = :translation_id)');
+    $sentence = $pdo->prepare('SELECT COUNT(*) FROM frases WHERE id_translation = :translation_id');
     $sentence->execute(['translation_id' => $translationId]);
-    $hasSentences = (bool) $sentence->fetchColumn();
+    $hasMinimumSlides = (int) $sentence->fetchColumn() >= MIN_REVIEW_SLIDES;
     $isDue = $existing && (bool) $existing['is_due'];
-    if (!$hasSentences || ($existing && !$isDue)) { $pdo->rollBack(); playResponse('Esta tradução não está disponível para revisão.', 'error'); }
+    if (!$hasMinimumSlides || ($existing && !$isDue)) { $pdo->rollBack(); playResponse('Esta tradução não está disponível para revisão.', 'error'); }
 
     $amount = $existing ? (int) $existing['amount'] + 1 : 1;
     $nextReview = (new DateTimeImmutable('now'))->modify('+' . $amount . ' days')->format('Y-m-d H:i:s');
@@ -50,11 +50,11 @@ try {
     $message = 'Revisão registrada. A próxima ficará disponível em ' . $amount . ' ' . ($amount === 1 ? 'dia' : 'dias') . '.';
 
     if (str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json')) {
-        $next = $pdo->prepare('SELECT t.id, t.portugues FROM reviews r INNER JOIN translations t ON t.id = r.id_translation WHERE r.id_user = :user_id AND r.next_review <= NOW() AND EXISTS (SELECT 1 FROM frases f WHERE f.id_translation = t.id) ORDER BY r.next_review ASC, r.id ASC LIMIT 1');
+        $next = $pdo->prepare('SELECT t.id, t.portugues FROM reviews r INNER JOIN translations t ON t.id = r.id_translation WHERE r.id_user = :user_id AND r.next_review <= NOW() AND (SELECT COUNT(*) FROM frases f WHERE f.id_translation = t.id) >= ' . MIN_REVIEW_SLIDES . ' ORDER BY r.next_review ASC, r.id ASC LIMIT 1');
         $next->execute(['user_id' => $userId]);
         $translation = $next->fetch(PDO::FETCH_ASSOC) ?: null;
         if (!$translation) {
-            $next = $pdo->prepare('SELECT t.id, t.portugues FROM translations t WHERE NOT EXISTS (SELECT 1 FROM reviews r WHERE r.id_user = :user_id AND r.id_translation = t.id) AND EXISTS (SELECT 1 FROM frases f WHERE f.id_translation = t.id) ORDER BY t.id ASC LIMIT 1');
+            $next = $pdo->prepare('SELECT t.id, t.portugues FROM translations t WHERE NOT EXISTS (SELECT 1 FROM reviews r WHERE r.id_user = :user_id AND r.id_translation = t.id) AND (SELECT COUNT(*) FROM frases f WHERE f.id_translation = t.id) >= ' . MIN_REVIEW_SLIDES . ' ORDER BY t.id ASC LIMIT 1');
             $next->execute(['user_id' => $userId]);
             $translation = $next->fetch(PDO::FETCH_ASSOC) ?: null;
         }
