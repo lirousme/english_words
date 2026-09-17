@@ -43,6 +43,10 @@ Arquitetura MPA (Multi-Page Application).
   - define('GEMINI_API_KEY', envValue('GEMINI_API_KEY', ''));
   - define('GEMINI_API_URL', envValue('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/models'));
   - define('GEMINI_TRANSLATION_MODEL', envValue('GEMINI_TRANSLATION_MODEL', 'gemini-3.5-flash-lite'));
+  - Ao descobrir uma palavra, uma única solicitação ao Gemini retorna as traduções e
+    as 10 frases de exemplo de cada tradução. O botão "Gerar mais" permanece como
+    recuperação para traduções antigas ou incompletas, sem fazer uma solicitação por
+    tradução durante a descoberta.
 
 - Geração de áudios TTS:
   - API Key do Google Cloud, fica no arquivo .env (GOOGLE_CLOUD_API_KEY).
