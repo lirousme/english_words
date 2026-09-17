@@ -10,11 +10,11 @@ unset($_SESSION['play_flash']);
 try {
     $pdo = new PDO('mysql:host=' . env('DB_HOST') . ';dbname=' . env('DB_NAME') . ';charset=utf8mb4', env('DB_USER'), env('DB_PASS'), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]);
     $userId = (int) ($user['id'] ?? 0);
-    $due = $pdo->prepare('SELECT t.id, t.portugues FROM reviews r INNER JOIN translations t ON t.id = r.id_translation WHERE r.id_user = :user_id AND r.next_review <= NOW() AND EXISTS (SELECT 1 FROM frases f WHERE f.id_translation = t.id) ORDER BY r.next_review ASC, r.id ASC LIMIT 1');
+    $due = $pdo->prepare('SELECT t.id, t.portugues FROM reviews r INNER JOIN translations t ON t.id = r.id_translation WHERE r.id_user = :user_id AND r.next_review <= NOW() AND (SELECT COUNT(*) FROM frases f WHERE f.id_translation = t.id) >= ' . MIN_REVIEW_SLIDES . ' ORDER BY r.next_review ASC, r.id ASC LIMIT 1');
     $due->execute(['user_id' => $userId]);
     $translation = $due->fetch(PDO::FETCH_ASSOC) ?: null;
     if (!$translation) {
-        $new = $pdo->prepare('SELECT t.id, t.portugues FROM translations t WHERE NOT EXISTS (SELECT 1 FROM reviews r WHERE r.id_user = :user_id AND r.id_translation = t.id) AND EXISTS (SELECT 1 FROM frases f WHERE f.id_translation = t.id) ORDER BY t.id ASC LIMIT 1');
+        $new = $pdo->prepare('SELECT t.id, t.portugues FROM translations t WHERE NOT EXISTS (SELECT 1 FROM reviews r WHERE r.id_user = :user_id AND r.id_translation = t.id) AND (SELECT COUNT(*) FROM frases f WHERE f.id_translation = t.id) >= ' . MIN_REVIEW_SLIDES . ' ORDER BY t.id ASC LIMIT 1');
         $new->execute(['user_id' => $userId]);
         $translation = $new->fetch(PDO::FETCH_ASSOC) ?: null;
     }
@@ -232,6 +232,6 @@ appShellHeader('Jogar', 'play');
         render();
       })();
     </script>
-  <?php else: ?><section class="review-empty"><strong>Nenhuma revisão disponível agora.</strong><span>Quando houver uma tradução vencida ou ainda não estudada com frases de exemplo, ela aparecerá aqui.</span></section><?php endif; ?>
+  <?php else: ?><section class="review-empty"><strong>Nenhuma revisão disponível agora.</strong><span>Quando houver uma tradução vencida ou ainda não estudada com pelo menos <?= MIN_REVIEW_SLIDES ?> frases de exemplo, ela aparecerá aqui.</span></section><?php endif; ?>
 </section>
 <?php appShellFooter();
