@@ -224,15 +224,16 @@ function discoverTranslations(string $word): array
 
     $model = env('GEMINI_TRANSLATION_MODEL', 'gemini-3.5-flash-lite');
     $baseUrl = rtrim(env('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/models'), '/');
-    $prompt = "Você é um dicionário inglês-português. Encontre todas as traduções usuais possíveis em português brasileiro da palavra ou expressão inglesa exatamente como fornecida entre <termo> e </termo>.\n\n<termo>{$word}</termo>\n\n"
-        . "Regra crítica: traduza ipsis litteris somente o termo dentro das tags. Não acrescente, remova, complete ou altere palavras. Por exemplo, se o termo for 'get', não inclua sentidos de 'get off'; se for 'get off', não inclua sentidos de apenas 'get'.\n"
-        . "Classifique cada tradução com type: 1 verbo/phrasal verb/locução verbal; 2 substantivo/locução substantiva; 3 conjunção/locução conjuntiva; 4 advérbio/locução adverbial; 5 adjetivo/locução adjetiva; 6 preposição/locução prepositiva.\n"
-        . "Para cada tradução, crie exatamente uma frase curta, coloquial e natural de exemplo. A frase em inglês deve usar o termo de <termo> ipsis litteris, sem flexioná-lo ou substituí-lo, e a frase em português deve ser a tradução dessa mesma frase.\n"
-        . "Idioma é uma regra crítica e inegociável: o valor de frase_ingles deve estar 100% em inglês, e o valor de frase_portugues deve estar 100% em português brasileiro. Nunca misture os idiomas em uma frase: em especial, não deixe o termo em inglês dentro de frase_portugues; traduza-o naturalmente para o português.\n"
-        . "Escreva a frase em inglês como um falante nativo a diria em uma conversa. Priorize sempre contrações naturais e comuns em vez das formas expandidas: use, por exemplo, 'I'll' em vez de 'I will', 'I've' em vez de 'I have', 'don't' em vez de 'do not' e 'can't' em vez de 'cannot'.\n"
-        . "Identifique também phrasal verbs ou locuções inglesas usuais diretamente formados a partir do termo, se existirem. Liste somente expressões diferentes do termo que devem ser estudadas separadamente; por exemplo, para 'get', inclua 'get off' quando for uma expressão usual, mas nunca misture os seus sentidos às traduções de 'get'. Não inclua palavras isoladas, flexões, sinônimos, traduções nem expressões inventadas.\n"
-        . 'Retorne somente JSON válido, sem markdown, no formato {"translations":[{"portugues":"...","type":1,"frase_portugues":"...","frase_ingles":"..."}],"related_expressions":["..."]}. Use apenas traduções e frases em português brasileiro; não explique nada e não repita itens.';
-    $payload = json_encode(['contents' => [['parts' => [['text' => $prompt]]]]], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    $prompt = "Tarefa: dicionário inglês → português brasileiro.\nTermo exato: <termo>{$word}</termo>\n\n"
+        . "1. Traduza somente o termo entre as tags; não inclua sentidos de expressões maiores ou menores.\n"
+        . "2. Para cada sentido usual, retorne uma tradução, a classe type (1=verbo/locução verbal; 2=substantivo; 3=conjunção; 4=advérbio; 5=adjetivo; 6=preposição), e um exemplo curto e coloquial.\n"
+        . "3. O exemplo em inglês deve conter o termo literalmente, sem flexão, substituição ou palavras extras; o exemplo em português deve ser sua tradução natural, inteiramente em pt-BR e sem o termo em inglês. Use contrações comuns em inglês.\n"
+        . "4. Em related_expressions, inclua apenas phrasal verbs ou locuções usuais formados pelo termo, diferentes dele e estudáveis separadamente. Exclua flexões, sinônimos, traduções e itens inventados.\n"
+        . 'Não explique nem repita itens. JSON: {"translations":[{"portugues":"","type":1,"frase_portugues":"","frase_ingles":""}],"related_expressions":[]}.';
+    $payload = json_encode([
+        'contents' => [['parts' => [['text' => $prompt]]]],
+        'generationConfig' => ['responseMimeType' => 'application/json'],
+    ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     $curl = curl_init($baseUrl . '/' . rawurlencode($model) . ':generateContent?key=' . rawurlencode($apiKey));
     curl_setopt_array($curl, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => $payload, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 45]);
     $response = curl_exec($curl);
@@ -315,12 +316,15 @@ function generateAdditionalSentences(string $word, string $translation, array $e
     $existingJson = json_encode($existingSentences, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     $model = env('GEMINI_TRANSLATION_MODEL', 'gemini-3.5-flash-lite');
     $baseUrl = rtrim(env('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/models'), '/');
-    $prompt = "Você cria frases de exemplo para um dicionário inglês-português. A palavra ou expressão inglesa original é <termo>{$word}</termo> e a tradução em português brasileiro é <traducao>{$translation}</traducao>.\n\n"
-        . "Crie exatamente {$quantity} novas frases curtas, coloquiais, naturais e distintas para esse sentido da tradução. Cada frase em inglês deve conter o termo de <termo> ipsis litteris, sem flexioná-lo, substituí-lo ou acrescentar palavras ao termo. Cada frase em português deve traduzir a respectiva frase em inglês e usar o sentido de <traducao>.\n"
-        . "Idioma é uma regra crítica e inegociável: frase_ingles deve estar 100% em inglês, e frase_portugues deve estar 100% em português brasileiro. Nunca misture idiomas; especialmente, jamais inclua o termo de <termo> em inglês dentro de frase_portugues — use somente a tradução natural em português.\n"
-        . "Escreva cada frase em inglês como um falante nativo a diria em uma conversa. Priorize sempre contrações naturais e comuns: use, por exemplo, 'I'll' em vez de 'I will', 'I've' em vez de 'I have', 'don't' em vez de 'do not' e 'can't' em vez de 'cannot'. Não repita nem reformule as frases já existentes abaixo: {$existingJson}\n\n"
-        . 'Retorne somente JSON válido, sem markdown, no formato {"sentences":[{"frase_portugues":"...","frase_ingles":"..."}]}. Não explique nada.';
-    $payload = json_encode(['contents' => [['parts' => [['text' => $prompt]]]]], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    $prompt = "Crie exatamente {$quantity} exemplos novos, curtos, coloquiais e distintos para o sentido informado.\n"
+        . "Termo exato em inglês: <termo>{$word}</termo>\nTradução em pt-BR: <traducao>{$translation}</traducao>\n\n"
+        . "Cada frase em inglês deve usar o termo literalmente, sem flexioná-lo, substituí-lo ou acrescentar palavras, e deve soar nativa (prefira contrações comuns). A frase em português deve traduzir a correspondente, usar esse sentido e estar inteiramente em pt-BR, sem o termo em inglês.\n"
+        . "Não repita nem reformule estes exemplos: {$existingJson}\n"
+        . 'Não explique nada. JSON: {"sentences":[{"frase_portugues":"","frase_ingles":""}]}.';
+    $payload = json_encode([
+        'contents' => [['parts' => [['text' => $prompt]]]],
+        'generationConfig' => ['responseMimeType' => 'application/json'],
+    ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     $curl = curl_init($baseUrl . '/' . rawurlencode($model) . ':generateContent?key=' . rawurlencode($apiKey));
     curl_setopt_array($curl, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => $payload, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 45]);
     $response = curl_exec($curl);
