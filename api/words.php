@@ -215,7 +215,7 @@ function synthesizeSentenceAudio(string $text, string $languageCode, string $voi
     return $audio;
 }
 
-/** @return array{translations: list<array{portugues: string, type: int, frase_portugues: string, frase_ingles: string}>, relatedExpressions: list<string>} */
+/** @return array{translations: list<array{portugues: string, type: int, sentences: list<array{frase_portugues: string, frase_ingles: string}>}>, relatedExpressions: list<string>} */
 function discoverTranslations(string $word): array
 {
     $apiKey = env('GEMINI_API_KEY');
@@ -224,12 +224,11 @@ function discoverTranslations(string $word): array
 
     $model = env('GEMINI_TRANSLATION_MODEL', 'gemini-3.5-flash-lite');
     $baseUrl = rtrim(env('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/models'), '/');
-    $prompt = "Tarefa: dicionário inglês → português brasileiro.\nTermo exato: <termo>{$word}</termo>\n\n"
-        . "1. Traduza somente o termo entre as tags; não inclua sentidos de expressões maiores ou menores.\n"
-        . "2. Para cada sentido usual, retorne uma tradução, a classe type (1=verbo/locução verbal; 2=substantivo; 3=conjunção; 4=advérbio; 5=adjetivo; 6=preposição), e um exemplo curto e coloquial.\n"
-        . "3. O exemplo em inglês deve conter o termo literalmente, sem flexão, substituição ou palavras extras; o exemplo em português deve ser sua tradução natural, inteiramente em pt-BR e sem o termo em inglês. Use contrações comuns em inglês.\n"
-        . "4. Em related_expressions, inclua apenas phrasal verbs ou locuções usuais formados pelo termo, diferentes dele e estudáveis separadamente. Exclua flexões, sinônimos, traduções e itens inventados.\n"
-        . 'Não explique nem repita itens. JSON: {"translations":[{"portugues":"","type":1,"frase_portugues":"","frase_ingles":""}],"related_expressions":[]}.';
+    $prompt = "Dicionário inglês → pt-BR. Termo exato: <termo>{$word}</termo>.\n"
+        . "Retorne cada sentido usual do termo isolado (não de expressões maiores/menores) com portugues e type: 1=verbo/locução verbal, 2=substantivo, 3=conjunção, 4=advérbio, 5=adjetivo, 6=preposição.\n"
+        . "Para CADA tradução, gere exatamente 10 sentences distintas, curtas e coloquiais. Em cada uma, frase_ingles deve conter literalmente o termo, sem flexão, substituição ou palavras extras; frase_portugues deve ser a tradução natural desse sentido, só em pt-BR e sem o termo em inglês. Prefira contrações comuns.\n"
+        . "related_expressions: somente phrasal verbs ou locuções usuais formados pelo termo, diferentes dele e estudáveis separadamente; exclua flexões, sinônimos, traduções e invenções. Sem explicações ou repetições.\n"
+        . 'JSON: {"translations":[{"portugues":"","type":1,"sentences":[{"frase_portugues":"","frase_ingles":""}]}],"related_expressions":[]}.';
     $payload = json_encode([
         'contents' => [['parts' => [['text' => $prompt]]]],
         'generationConfig' => ['responseMimeType' => 'application/json'],
@@ -254,40 +253,30 @@ function discoverTranslations(string $word): array
     $translations = [];
     foreach ($result['translations'] as $item) {
         $translation = preg_replace('/\s+/u', ' ', trim(is_array($item) ? (string) ($item['portugues'] ?? '') : '')) ?? '';
-        $portugueseSentence = preg_replace('/\s+/u', ' ', trim(is_array($item) ? (string) ($item['frase_portugues'] ?? '') : '')) ?? '';
-        $englishSentence = preg_replace(
-    '/\s+/u',
-    ' ',
-    trim(is_array($item) ? (string) ($item['frase_ingles'] ?? '') : '')
-) ?? '';
+        $type = is_array($item) ? filter_var($item['type'] ?? null, FILTER_VALIDATE_INT) : false;
+        $rawSentences = is_array($item) ? ($item['sentences'] ?? null) : null;
+        if ($translation === '' || mb_strlen($translation) > 255 || !is_int($type) || $type < 1 || $type > 6 || !is_array($rawSentences)) continue;
 
-$type = is_array($item) ? filter_var($item['type'] ?? null, FILTER_VALIDATE_INT) : false;
+        $sentences = [];
+        $knownSentences = [];
+        foreach ($rawSentences as $sentence) {
+            $portugueseSentence = preg_replace('/\s+/u', ' ', trim(is_array($sentence) ? (string) ($sentence['frase_portugues'] ?? '') : '')) ?? '';
+            $englishSentence = preg_replace('/\s+/u', ' ', trim(is_array($sentence) ? (string) ($sentence['frase_ingles'] ?? '') : '')) ?? '';
+            if ($portugueseSentence === '' || $englishSentence === '' || mb_strlen($portugueseSentence) > 2000 || mb_strlen($englishSentence) > 2000 || !englishSentenceUsesExactTerm($englishSentence, $word)) continue;
 
-// Primeiro valida a frase ORIGINAL gerada pelo Gemini.
-if (
-    $translation === '' ||
-    mb_strlen($translation) > 255 ||
-    $portugueseSentence === '' ||
-    $englishSentence === '' ||
-    mb_strlen($portugueseSentence) > 2000 ||
-    mb_strlen($englishSentence) > 2000 ||
-    !englishSentenceUsesExactTerm($englishSentence, $word) ||
-    !is_int($type) ||
-    $type < 1 ||
-    $type > 6
-) {
-    continue;
-}
+            $englishSentence = normalizeEnglishContractions($englishSentence);
+            $sentenceKey = mb_strtolower($englishSentence);
+            if (isset($knownSentences[$sentenceKey])) continue;
+            $knownSentences[$sentenceKey] = true;
+            $sentences[] = ['frase_portugues' => $portugueseSentence, 'frase_ingles' => $englishSentence];
+        }
+        if (count($sentences) !== 10) continue;
 
-// Somente depois da validação aplica as contrações.
-$englishSentence = normalizeEnglishContractions($englishSentence);
-
-$translations[$type . ':' . mb_strtolower($translation)] = [
-    'portugues' => $translation,
-    'type' => $type,
-    'frase_portugues' => $portugueseSentence,
-    'frase_ingles' => $englishSentence
-];
+        $translations[$type . ':' . mb_strtolower($translation)] = [
+            'portugues' => $translation,
+            'type' => $type,
+            'sentences' => $sentences,
+        ];
     }
     if ($translations === []) throw new RuntimeException('O Gemini não encontrou traduções válidas para esta palavra.');
 
@@ -443,7 +432,10 @@ try {
         $insertSentence = $pdo->prepare('INSERT INTO frases (id_translation, frase_portugues, frase_ingles) VALUES (:id_translation, :frase_portugues, :frase_ingles)');
         foreach ($discovery['translations'] as $translation) {
             $insert->execute(['id_word' => $id, 'portugues' => $translation['portugues'], 'type' => $translation['type']]);
-            $insertSentence->execute(['id_translation' => (int) $pdo->lastInsertId(), 'frase_portugues' => $translation['frase_portugues'], 'frase_ingles' => $translation['frase_ingles']]);
+            $translationId = (int) $pdo->lastInsertId();
+            foreach ($translation['sentences'] as $sentence) {
+                $insertSentence->execute(['id_translation' => $translationId, 'frase_portugues' => $sentence['frase_portugues'], 'frase_ingles' => $sentence['frase_ingles']]);
+            }
         }
         $pdo->commit();
         $expressionCount = count($discovery['relatedExpressions']);
