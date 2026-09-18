@@ -39,11 +39,12 @@ Front Controller Pattern
 Arquitetura MPA (Multi-Page Application).
 
 - Geração de respostas em texto:
-  - API Key do Gemini, fica no arquivo .env (GEMINI_API_KEY).
-  - define('GEMINI_API_KEY', envValue('GEMINI_API_KEY', ''));
-  - define('GEMINI_API_URL', envValue('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/models'));
-  - define('GEMINI_TRANSLATION_MODEL', envValue('GEMINI_TRANSLATION_MODEL', 'gemini-3.5-flash-lite'));
-  - Ao descobrir uma palavra, uma única solicitação ao Gemini retorna as traduções e
+  - Selecione o provedor no `.env` com `AI_PROVIDER=gemini` ou `AI_PROVIDER=openrouter`.
+  - Para Gemini, configure `GEMINI_API_KEY`, `GEMINI_API_URL` e `GEMINI_TRANSLATION_MODEL`.
+  - Para OpenRouter, configure `OPENROUTER_API_KEY` (ou `API_KEY`), `OPENROUTER_API_URL` e
+    `OPENROUTER_TRANSLATION_MODEL`. Este último deve ser o identificador de um modelo disponível
+    na sua conta OpenRouter.
+  - Ao descobrir uma palavra, uma única solicitação à IA selecionada retorna as traduções e
     as 10 frases de exemplo de cada tradução. O botão "Gerar mais" permanece como
     recuperação para traduções antigas ou incompletas, sem fazer uma solicitação por
     tradução durante a descoberta.
