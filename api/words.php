@@ -383,7 +383,12 @@ function generateAdditionalSentences(string $word, string $translation, array $e
         $known[$key] = true;
         $sentences[] = ['frase_portugues' => $portugueseSentence, 'frase_ingles' => $englishSentence];
     }
-    if (count($sentences) !== $quantity) throw new RuntimeException('A IA não gerou a quantidade esperada de frases válidas.');
+    if (count($sentences) !== $quantity) {
+    throw new RuntimeException(
+        'A IA não gerou a quantidade esperada de frases válidas. Resposta da API: ' .
+        json_encode($GLOBALS['lastAiResponse'] ?? $text, JSON_UNESCAPED_UNICODE)
+    );
+}
     return $sentences;
 }
 
