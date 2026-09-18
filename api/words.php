@@ -215,40 +215,81 @@ function synthesizeSentenceAudio(string $text, string $languageCode, string $voi
     return $audio;
 }
 
-/** @return array{translations: list<array{portugues: string, type: int, sentences: list<array{frase_portugues: string, frase_ingles: string}>}>, relatedExpressions: list<string>} */
-function discoverTranslations(string $word): array
+function selectedAiProvider(): string
 {
-    $apiKey = env('GEMINI_API_KEY');
-    if ($apiKey === '') throw new RuntimeException('A chave do Gemini não foi configurada.');
+    $provider = strtolower(trim(env('AI_PROVIDER', 'gemini')));
+    if (!in_array($provider, ['gemini', 'openrouter'], true)) {
+        throw new RuntimeException('O provedor de IA configurado é inválido. Use gemini ou openrouter.');
+    }
+    return $provider;
+}
+
+/** Sends a prompt to the selected AI provider and returns its JSON response text. */
+function generateAiJson(string $prompt): string
+{
     if (!function_exists('curl_init')) throw new RuntimeException('A extensão cURL não está disponível no servidor.');
 
-    $model = env('GEMINI_TRANSLATION_MODEL', 'gemini-3.5-flash-lite');
-    $baseUrl = rtrim(env('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/models'), '/');
-    $prompt = "Dicionário inglês → pt-BR. Termo exato: <termo>{$word}</termo>.\n"
-        . "Retorne cada sentido usual do termo isolado (não de expressões maiores/menores) com portugues e type: 1=verbo/locução verbal, 2=substantivo, 3=conjunção, 4=advérbio, 5=adjetivo, 6=preposição.\n"
-        . "Para CADA tradução, gere exatamente 10 sentences distintas, curtas e coloquiais. Em cada uma, frase_ingles deve conter literalmente o termo, sem flexão, substituição ou palavras extras; frase_portugues deve ser a tradução natural desse sentido, só em pt-BR e sem o termo em inglês. Prefira contrações comuns.\n"
-        . "related_expressions: somente phrasal verbs ou locuções usuais formados pelo termo, diferentes dele e estudáveis separadamente; exclua flexões, sinônimos, traduções e invenções. Sem explicações ou repetições.\n"
-        . 'JSON: {"translations":[{"portugues":"","type":1,"sentences":[{"frase_portugues":"","frase_ingles":""}]}],"related_expressions":[]}.';
-    $payload = json_encode([
-        'contents' => [['parts' => [['text' => $prompt]]]],
-        'generationConfig' => ['responseMimeType' => 'application/json'],
-    ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
-    $curl = curl_init($baseUrl . '/' . rawurlencode($model) . ':generateContent?key=' . rawurlencode($apiKey));
-    curl_setopt_array($curl, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => $payload, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 45]);
+    $provider = selectedAiProvider();
+    if ($provider === 'gemini') {
+        $apiKey = env('GEMINI_API_KEY');
+        if ($apiKey === '') throw new RuntimeException('A chave do Gemini não foi configurada.');
+
+        $model = env('GEMINI_TRANSLATION_MODEL', 'gemini-3.5-flash-lite');
+        $baseUrl = rtrim(env('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/models'), '/');
+        $url = $baseUrl . '/' . rawurlencode($model) . ':generateContent?key=' . rawurlencode($apiKey);
+        $payload = [
+            'contents' => [['parts' => [['text' => $prompt]]]],
+            'generationConfig' => ['responseMimeType' => 'application/json'],
+        ];
+        $headers = ['Content-Type: application/json'];
+    } else {
+        $apiKey = env('OPENROUTER_API_KEY', env('API_KEY'));
+        $model = env('OPENROUTER_TRANSLATION_MODEL');
+        if ($apiKey === '') throw new RuntimeException('A chave do OpenRouter não foi configurada.');
+        if ($model === '') throw new RuntimeException('O modelo do OpenRouter não foi configurado.');
+
+        $url = env('OPENROUTER_API_URL', 'https://openrouter.ai/api/v1/chat/completions');
+        $payload = [
+            'model' => $model,
+            'messages' => [['role' => 'user', 'content' => $prompt]],
+        ];
+        $headers = ['Content-Type: application/json', 'Authorization: Bearer ' . $apiKey];
+    }
+
+    $request = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    $curl = curl_init($url);
+    curl_setopt_array($curl, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => $request, CURLOPT_HTTPHEADER => $headers, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 45]);
     $response = curl_exec($curl);
     $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
     $curlError = curl_error($curl);
     curl_close($curl);
     if (!is_string($response) || $status < 200 || $status >= 300) {
-        error_log('Subdrill Gemini translation error: HTTP ' . $status . ' ' . $curlError);
-        throw new RuntimeException('Não foi possível consultar o Gemini agora.');
+        error_log('Subdrill ' . $provider . ' text generation error: HTTP ' . $status . ' ' . $curlError);
+        throw new RuntimeException('Não foi possível consultar ' . ($provider === 'gemini' ? 'o Gemini' : 'o OpenRouter') . ' agora.');
     }
+
     $body = json_decode($response, true, 512, JSON_THROW_ON_ERROR);
-    $text = $body['candidates'][0]['content']['parts'][0]['text'] ?? '';
-    if (!is_string($text)) throw new RuntimeException('O Gemini retornou uma resposta inválida.');
-    $text = preg_replace('/^```(?:json)?\s*|\s*```$/i', '', trim($text)) ?? '';
+    $text = $provider === 'gemini'
+        ? ($body['candidates'][0]['content']['parts'][0]['text'] ?? '')
+        : ($body['choices'][0]['message']['content'] ?? '');
+    if (!is_string($text) || trim($text) === '') {
+        throw new RuntimeException(($provider === 'gemini' ? 'O Gemini' : 'O OpenRouter') . ' retornou uma resposta inválida.');
+    }
+
+    return preg_replace('/^```(?:json)?\\s*|\\s*```$/i', '', trim($text)) ?? '';
+}
+
+/** @return array{translations: list<array{portugues: string, type: int, sentences: list<array{frase_portugues: string, frase_ingles: string}>}>, relatedExpressions: list<string>} */
+function discoverTranslations(string $word): array
+{
+    $prompt = "Dicionário inglês → pt-BR. Termo exato: <termo>{$word}</termo>.\n"
+        . "Retorne cada sentido usual do termo isolado (não de expressões maiores/menores) com portugues e type: 1=verbo/locução verbal, 2=substantivo, 3=conjunção, 4=advérbio, 5=adjetivo, 6=preposição.\n"
+        . "Para CADA tradução, gere exatamente 10 sentences distintas, curtas e coloquiais. Em cada uma, frase_ingles deve conter literalmente o termo, sem flexão, substituição ou palavras extras; frase_portugues deve ser a tradução natural desse sentido, só em pt-BR e sem o termo em inglês. Prefira contrações comuns.\n"
+        . "related_expressions: somente phrasal verbs ou locuções usuais formados pelo termo, diferentes dele e estudáveis separadamente; exclua flexões, sinônimos, traduções e invenções. Sem explicações ou repetições.\n"
+        . 'JSON: {"translations":[{"portugues":"","type":1,"sentences":[{"frase_portugues":"","frase_ingles":""}]}],"related_expressions":[]}.';
+    $text = generateAiJson($prompt);
     $result = json_decode($text, true, 512, JSON_THROW_ON_ERROR);
-    if (!is_array($result['translations'] ?? null)) throw new RuntimeException('O Gemini não retornou traduções no formato esperado.');
+    if (!is_array($result['translations'] ?? null)) throw new RuntimeException('A IA não retornou traduções no formato esperado.');
 
     $translations = [];
     foreach ($result['translations'] as $item) {
@@ -278,7 +319,7 @@ function discoverTranslations(string $word): array
             'sentences' => $sentences,
         ];
     }
-    if ($translations === []) throw new RuntimeException('O Gemini não encontrou traduções válidas para esta palavra.');
+    if ($translations === []) throw new RuntimeException('A IA não encontrou traduções válidas para esta palavra.');
 
     $relatedExpressions = [];
     $rawExpressions = $result['related_expressions'] ?? [];
@@ -298,38 +339,15 @@ function discoverTranslations(string $word): array
 function generateAdditionalSentences(string $word, string $translation, array $existingSentences, int $quantity): array
 {
     if ($quantity < 1) return [];
-    $apiKey = env('GEMINI_API_KEY');
-    if ($apiKey === '') throw new RuntimeException('A chave do Gemini não foi configurada.');
-    if (!function_exists('curl_init')) throw new RuntimeException('A extensão cURL não está disponível no servidor.');
-
     $existingJson = json_encode($existingSentences, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
-    $model = env('GEMINI_TRANSLATION_MODEL', 'gemini-3.5-flash-lite');
-    $baseUrl = rtrim(env('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/models'), '/');
     $prompt = "Crie exatamente {$quantity} exemplos novos, curtos, coloquiais e distintos para o sentido informado.\n"
         . "Termo exato em inglês: <termo>{$word}</termo>\nTradução em pt-BR: <traducao>{$translation}</traducao>\n\n"
         . "Cada frase em inglês deve usar o termo literalmente, sem flexioná-lo, substituí-lo ou acrescentar palavras, e deve soar nativa (prefira contrações comuns). A frase em português deve traduzir a correspondente, usar esse sentido e estar inteiramente em pt-BR, sem o termo em inglês.\n"
         . "Não repita nem reformule estes exemplos: {$existingJson}\n"
         . 'Não explique nada. JSON: {"sentences":[{"frase_portugues":"","frase_ingles":""}]}.';
-    $payload = json_encode([
-        'contents' => [['parts' => [['text' => $prompt]]]],
-        'generationConfig' => ['responseMimeType' => 'application/json'],
-    ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
-    $curl = curl_init($baseUrl . '/' . rawurlencode($model) . ':generateContent?key=' . rawurlencode($apiKey));
-    curl_setopt_array($curl, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => $payload, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 45]);
-    $response = curl_exec($curl);
-    $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
-    $curlError = curl_error($curl);
-    curl_close($curl);
-    if (!is_string($response) || $status < 200 || $status >= 300) {
-        error_log('Subdrill Gemini sentence generation error: HTTP ' . $status . ' ' . $curlError);
-        throw new RuntimeException('Não foi possível consultar o Gemini agora.');
-    }
-    $body = json_decode($response, true, 512, JSON_THROW_ON_ERROR);
-    $text = $body['candidates'][0]['content']['parts'][0]['text'] ?? '';
-    if (!is_string($text)) throw new RuntimeException('O Gemini retornou uma resposta inválida.');
-    $text = preg_replace('/^```(?:json)?\s*|\s*```$/i', '', trim($text)) ?? '';
+    $text = generateAiJson($prompt);
     $result = json_decode($text, true, 512, JSON_THROW_ON_ERROR);
-    if (!is_array($result['sentences'] ?? null)) throw new RuntimeException('O Gemini não retornou frases no formato esperado.');
+    if (!is_array($result['sentences'] ?? null)) throw new RuntimeException('A IA não retornou frases no formato esperado.');
 
     $known = [];
     foreach ($existingSentences as $sentence) $known[mb_strtolower($sentence['frase_ingles'])] = true;
@@ -337,14 +355,14 @@ function generateAdditionalSentences(string $word, string $translation, array $e
     foreach ($result['sentences'] as $item) {
         $portugueseSentence = preg_replace('/\s+/u', ' ', trim(is_array($item) ? (string) ($item['frase_portugues'] ?? '') : '')) ?? '';
         $englishSentence = preg_replace('/\s+/u', ' ', trim(is_array($item) ? (string) ($item['frase_ingles'] ?? '') : '')) ?? '';
-$englishSentence = normalizeEnglishContractions($englishSentence);
-$key = mb_strtolower($englishSentence);
+        $englishSentence = normalizeEnglishContractions($englishSentence);
+        $key = mb_strtolower($englishSentence);
 
-if ($portugueseSentence === '' || $englishSentence === '' || mb_strlen($portugueseSentence) > 2000 || mb_strlen($englishSentence) > 2000 || !englishSentenceUsesExactTerm($englishSentence, $word) || isset($known[$key])) continue;
+        if ($portugueseSentence === '' || $englishSentence === '' || mb_strlen($portugueseSentence) > 2000 || mb_strlen($englishSentence) > 2000 || !englishSentenceUsesExactTerm($englishSentence, $word) || isset($known[$key])) continue;
         $known[$key] = true;
         $sentences[] = ['frase_portugues' => $portugueseSentence, 'frase_ingles' => $englishSentence];
     }
-    if (count($sentences) !== $quantity) throw new RuntimeException('O Gemini não gerou a quantidade esperada de frases válidas.');
+    if (count($sentences) !== $quantity) throw new RuntimeException('A IA não gerou a quantidade esperada de frases válidas.');
     return $sentences;
 }
 

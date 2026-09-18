@@ -28,6 +28,10 @@ function envValue(string $key, string $default = ''): string
 define('GEMINI_API_KEY', envValue('GEMINI_API_KEY', ''));
 define('GEMINI_API_URL', envValue('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/models'));
 define('GEMINI_TRANSLATION_MODEL', envValue('GEMINI_TRANSLATION_MODEL', 'gemini-3.5-flash-lite'));
+define('AI_PROVIDER', envValue('AI_PROVIDER', 'gemini'));
+define('OPENROUTER_API_KEY', envValue('OPENROUTER_API_KEY', envValue('API_KEY', '')));
+define('OPENROUTER_API_URL', envValue('OPENROUTER_API_URL', 'https://openrouter.ai/api/v1/chat/completions'));
+define('OPENROUTER_TRANSLATION_MODEL', envValue('OPENROUTER_TRANSLATION_MODEL', ''));
 define('GOOGLE_CLOUD_API_KEY', envValue('GOOGLE_CLOUD_API_KEY', ''));
 define('MIN_REVIEW_SLIDES', 10);
 
