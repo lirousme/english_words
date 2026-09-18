@@ -604,5 +604,5 @@ try {
     if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
     if ($exception->getCode() === '23000') wordsRedirect('Essa palavra já está cadastrada.', 'error');
     error_log('Subdrill words database error: ' . $exception->getMessage());
-    wordsRedirect('Não foi possível salvar a palavra agora. Tente novamente mais tarde.', 'error');
+    wordsRedirect($exception->getMessage(), 'error');
 }
