@@ -8,11 +8,28 @@ requireAuth();
 startSecureSession();
 if (!hash_equals($_SESSION['csrf'] ?? '', (string) ($_POST['csrf'] ?? ''))) { http_response_code(419); exit('Solicitação expirada.'); }
 
-function wordsRedirect(string $message, string $type = 'success'): never
+function isAsyncWordsRequest(): bool
 {
+    return str_contains((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json');
+}
+
+/** @param array<string, mixed> $data */
+function wordsResponse(string $message, string $type = 'success', array $data = []): never
+{
+    if (isAsyncWordsRequest()) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => $type === 'success', 'message' => $message, ...$data], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        exit;
+    }
+
     $_SESSION['words_flash'] = ['message' => $message, 'type' => $type];
     header('Location: ' . appUrl('words'));
     exit;
+}
+
+function wordsRedirect(string $message, string $type = 'success'): never
+{
+    wordsResponse($message, $type);
 }
 
 function normalizedWord(string $word): string
@@ -178,6 +195,7 @@ function normalizeEnglishContractions(string $sentence): string
 
 function translationsRedirect(int $wordId, string $message, string $type = 'success'): never
 {
+    if (isAsyncWordsRequest()) wordsResponse($message, $type, ['word_id' => $wordId]);
     $_SESSION['words_flash'] = ['message' => $message, 'type' => $type];
     header('Location: ' . appUrl('words') . '?word=' . $wordId);
     exit;
@@ -276,7 +294,10 @@ function generateAiJson(string $prompt): string
         throw new RuntimeException(($provider === 'gemini' ? 'O Gemini' : 'O OpenRouter') . ' retornou uma resposta inválida.');
     }
 
-    return preg_replace('/^```(?:json)?\\s*|\\s*```$/i', '', trim($text)) ?? '';
+    $text = preg_replace('/^```(?:json)?\\s*|\\s*```$/i', '', trim($text)) ?? '';
+    // Include the model output in the AJAX response so it remains inspectable in DevTools.
+    $GLOBALS['lastAiResponse'] = json_decode($text, true) ?? $text;
+    return $text;
 }
 
 /** @return array{translations: list<array{portugues: string, type: int, sentences: list<array{frase_portugues: string, frase_ingles: string}>}>, relatedExpressions: list<string>} */
@@ -529,7 +550,9 @@ try {
             $insertSentence->execute(['id_translation' => $translationId, 'frase_portugues' => $sentence['frase_portugues'], 'frase_ingles' => $sentence['frase_ingles']]);
         }
         $pdo->commit();
-        translationsRedirect((int) $id, count($newSentences) . ' novas frases geradas para “' . $storedTranslation['portugues'] . '”.');
+        $message = count($newSentences) . ' novas frases geradas para “' . $storedTranslation['portugues'] . '”.';
+        if (isAsyncWordsRequest()) wordsResponse($message, 'success', ['word_id' => (int) $id, 'ai_response' => $GLOBALS['lastAiResponse'] ?? null]);
+        translationsRedirect((int) $id, $message);
     }
     if ($action === 'generate_audio') {
         $sentencesStatement = $pdo->query("SELECT id, frase_portugues, frase_ingles, audio_portugues, audio_en_gb FROM frases WHERE audio_portugues IS NULL OR audio_portugues = '' OR audio_en_gb IS NULL OR audio_en_gb = '' ORDER BY id ASC");
@@ -544,7 +567,9 @@ try {
             if ($portugueseAudio === '') $portugueseAudio = synthesizeSentenceAudio($sentence['frase_portugues'], 'pt-BR', 'pt-BR-Chirp3-HD-Algieba');
             $updateAudio->execute(['id' => $sentence['id'], 'audio_portugues' => $portugueseAudio, 'audio_en_gb' => $englishAudio]);
         }
-        wordsRedirect(count($sentences) . ' frase' . (count($sentences) === 1 ? '' : 's') . ' com áudio gerado.');
+        $message = count($sentences) . ' frase' . (count($sentences) === 1 ? '' : 's') . ' com áudio gerado.';
+        if (isAsyncWordsRequest()) wordsResponse($message, 'success', ['audio_generated_count' => count($sentences)]);
+        wordsRedirect($message);
     }
     if ($action === 'discover') {
         $wordStatement = $pdo->prepare('SELECT word FROM words WHERE id = :id');
@@ -571,6 +596,7 @@ try {
         $expressionCount = count($discovery['relatedExpressions']);
         $message = count($discovery['translations']) . ' traduções encontradas e salvas.';
         if ($expressionCount > 0) $message .= ' ' . $expressionCount . ' phrasal verb' . ($expressionCount === 1 ? '' : 's') . ' ou locuções adicionado' . ($expressionCount === 1 ? '' : 's') . ' à lista de palavras.';
+        if (isAsyncWordsRequest()) wordsResponse($message, 'success', ['word_id' => (int) $id, 'ai_response' => $GLOBALS['lastAiResponse'] ?? null]);
         translationsRedirect((int) $id, $message);
     }
     wordsRedirect('Ação inválida.', 'error');
