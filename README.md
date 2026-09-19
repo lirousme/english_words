@@ -44,10 +44,10 @@ Arquitetura MPA (Multi-Page Application).
   - Para OpenRouter, configure `OPENROUTER_API_KEY` (ou `API_KEY`), `OPENROUTER_API_URL` e
     `OPENROUTER_TRANSLATION_MODEL`. Este último deve ser o identificador de um modelo disponível
     na sua conta OpenRouter.
-  - Ao descobrir uma palavra, uma única solicitação à IA selecionada retorna as traduções e
-    as 10 frases de exemplo de cada tradução. O botão "Gerar mais" permanece como
-    recuperação para traduções antigas ou incompletas, sem fazer uma solicitação por
-    tradução durante a descoberta.
+  - Ao descobrir uma palavra, uma única solicitação à IA selecionada solicita as traduções e
+    10 frases de exemplo de cada tradução. Se a IA retornar menos frases válidas, as frases
+    disponíveis são salvas. O botão "Gerar mais" solicita somente a quantidade restante e
+    envia os exemplos já cadastrados à IA para evitar repetições, até completar 10 frases.
 
 - Geração de áudios TTS:
   - API Key do Google Cloud, fica no arquivo .env (GOOGLE_CLOUD_API_KEY).
