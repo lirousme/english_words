@@ -305,7 +305,7 @@ function discoverTranslations(string $word): array
 {
     $prompt = "Dicionário inglês → pt-BR. Termo exato: <termo>{$word}</termo>.\n"
         . "Retorne cada sentido usual do termo isolado (não de expressões maiores/menores) com portugues e type: 1=verbo/locução verbal, 2=substantivo, 3=conjunção, 4=advérbio, 5=adjetivo, 6=preposição.\n"
-        . "Para CADA tradução, gere exatamente 10 sentences distintas, curtas e coloquiais. Em cada uma, frase_ingles deve conter literalmente o termo, sem flexão, substituição ou palavras extras; frase_portugues deve ser a tradução natural desse sentido, só em pt-BR e sem o termo em inglês. Prefira contrações comuns.\n"
+        . "Para CADA tradução, gere exatamente 10 sentences distintas, curtas e coloquiais. O array sentences de cada tradução DEVE ter exatamente 10 itens: conte-os antes de responder e não retorne menos de 10 por nenhum motivo. Em cada uma, frase_ingles deve conter literalmente o termo, sem flexão, substituição ou palavras extras; frase_portugues deve ser a tradução natural desse sentido, só em pt-BR e sem o termo em inglês. Prefira contrações comuns.\n"
         . "related_expressions: somente phrasal verbs ou locuções usuais formados pelo termo, diferentes dele e estudáveis separadamente; exclua flexões, sinônimos, traduções e invenções. Sem explicações ou repetições.\n"
         . 'JSON: {"translations":[{"portugues":"","type":1,"sentences":[{"frase_portugues":"","frase_ingles":""}]}],"related_expressions":[]}.';
     $text = generateAiJson($prompt);
@@ -367,6 +367,7 @@ function generateAdditionalSentences(string $word, string $translation, array $e
     $existingJson = json_encode($existingSentences, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     $prompt = "Crie exatamente {$quantity} exemplos novos, curtos, coloquiais e distintos para o sentido informado.\n"
         . "Termo exato em inglês: <termo>{$word}</termo>\nTradução em pt-BR: <traducao>{$translation}</traducao>\n\n"
+        . "O array sentences DEVE conter exatamente {$quantity} itens válidos. Antes de responder, conte os itens; não retorne menos de {$quantity}. Por exemplo, se forem solicitados 9 exemplos, retorne os 9 itens completos no array.\n"
         . "Cada frase em inglês deve usar o termo literalmente, sem flexioná-lo, substituí-lo ou acrescentar palavras, e deve soar nativa (prefira contrações comuns). A frase em português deve traduzir a correspondente, usar esse sentido e estar inteiramente em pt-BR, sem o termo em inglês.\n"
         . "Não repita nem reformule estes exemplos: {$existingJson}\n"
         . 'Não explique nada. JSON: {"sentences":[{"frase_portugues":"","frase_ingles":""}]}.';
