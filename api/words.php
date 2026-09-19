@@ -43,8 +43,10 @@ function parseExternalSentences(string $value): array
     $pairs = preg_split('/\*/u', $value) ?: [];
     $sentences = [];
     foreach ($pairs as $pair) {
-        $parts = preg_split('/;/u', $pair, 2);
-        if (count($parts) !== 2) throw new RuntimeException('Separe cada frase em inglês da tradução com ponto e vírgula e cada par com asterisco.');
+        // Accept the semicolon format shown in the modal and the `.,` format requested by the copied AI prompt.
+        // A comma is only a separator when it follows sentence-ending punctuation, so commas inside a sentence remain intact.
+        $parts = preg_split('/\s*;\s*|\s*(?<=[.!?…])\s*,\s*/u', trim($pair), 2);
+        if (count($parts) !== 2) throw new RuntimeException('Separe cada frase em inglês da tradução com ponto e vírgula, ou com vírgula após o ponto final, e cada par com asterisco.');
         $english = preg_replace('/\s+/u', ' ', trim($parts[0])) ?? '';
         $portuguese = preg_replace('/\s+/u', ' ', trim($parts[1])) ?? '';
         if ($english === '' || $portuguese === '' || mb_strlen($english) > 2000 || mb_strlen($portuguese) > 2000 || preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', $english . $portuguese)) {
