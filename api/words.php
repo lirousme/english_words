@@ -331,8 +331,12 @@ function discoverTranslations(string $word): array
             if (isset($knownSentences[$sentenceKey])) continue;
             $knownSentences[$sentenceKey] = true;
             $sentences[] = ['frase_portugues' => $portugueseSentence, 'frase_ingles' => $englishSentence];
+            if (count($sentences) === 10) break;
         }
-        if (count($sentences) !== 10) continue;
+        // A provider can return fewer valid examples than requested. Keep the
+        // translation with the examples it did produce so "Gerar mais" can
+        // request only the remaining amount later.
+        if ($sentences === []) continue;
 
         $translations[$type . ':' . mb_strtolower($translation)] = [
             'portugues' => $translation,
@@ -371,7 +375,9 @@ function generateAdditionalSentences(string $word, string $translation, array $e
     if (!is_array($result['sentences'] ?? null)) throw new RuntimeException('A IA não retornou frases no formato esperado.');
 
     $known = [];
-    foreach ($existingSentences as $sentence) $known[mb_strtolower($sentence['frase_ingles'])] = true;
+    foreach ($existingSentences as $sentence) {
+        $known[mb_strtolower(normalizeEnglishContractions((string) $sentence['frase_ingles']))] = true;
+    }
     $sentences = [];
     foreach ($result['sentences'] as $item) {
         $portugueseSentence = preg_replace('/\s+/u', ' ', trim(is_array($item) ? (string) ($item['frase_portugues'] ?? '') : '')) ?? '';
@@ -382,13 +388,9 @@ function generateAdditionalSentences(string $word, string $translation, array $e
         if ($portugueseSentence === '' || $englishSentence === '' || mb_strlen($portugueseSentence) > 2000 || mb_strlen($englishSentence) > 2000 || !englishSentenceUsesExactTerm($englishSentence, $word) || isset($known[$key])) continue;
         $known[$key] = true;
         $sentences[] = ['frase_portugues' => $portugueseSentence, 'frase_ingles' => $englishSentence];
+        if (count($sentences) === $quantity) break;
     }
-    if (count($sentences) !== $quantity) {
-    throw new RuntimeException(
-        'A IA não gerou a quantidade esperada de frases válidas. Resposta da API: ' .
-        json_encode($GLOBALS['lastAiResponse'] ?? $text, JSON_UNESCAPED_UNICODE)
-    );
-}
+    if ($sentences === []) throw new RuntimeException('A IA não gerou novas frases válidas. Tente novamente.');
     return $sentences;
 }
 
