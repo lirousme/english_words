@@ -201,6 +201,23 @@ function translationsRedirect(int $wordId, string $message, string $type = 'succ
     exit;
 }
 
+/**
+ * Opens a database connection for the current unit of database work.
+ *
+ * AI and text-to-speech requests can take longer than MySQL's configured
+ * wait_timeout. Call this again after those requests rather than attempting
+ * to reuse a connection that was idle while waiting for an external service.
+ */
+function wordsDatabaseConnection(): PDO
+{
+    return new PDO(
+        'mysql:host=' . env('DB_HOST') . ';dbname=' . env('DB_NAME') . ';charset=utf8mb4',
+        env('DB_USER'),
+        env('DB_PASS'),
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]
+    );
+}
+
 function englishSentenceUsesExactTerm(string $sentence, string $term): bool
 {
     $pattern = "~(?<![\\p{L}\\p{N}'’\\-])" . preg_quote($term, '~') . "(?![\\p{L}\\p{N}'’\\-])~iu";
@@ -498,7 +515,7 @@ if ($action === 'manual_translation' && (!$id || $translation === '' || mb_strle
 if ($action === 'import_csv' && (!isset($_FILES['csv_file']) || !is_array($_FILES['csv_file']) || (int) ($_FILES['csv_file']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_uploaded_file((string) ($_FILES['csv_file']['tmp_name'] ?? '')))) wordsRedirect('Envie uma planilha CSV válida.', 'error');
 
 try {
-    $pdo = new PDO('mysql:host=' . env('DB_HOST') . ';dbname=' . env('DB_NAME') . ';charset=utf8mb4', env('DB_USER'), env('DB_PASS'), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]);
+    $pdo = wordsDatabaseConnection();
     if ($action === 'create') {
         $pdo->prepare('INSERT INTO words (word) VALUES (:word)')->execute(['word' => $word]);
         wordsRedirect('Palavra adicionada com sucesso.');
@@ -552,6 +569,8 @@ try {
         if ($missingSentences === 0) translationsRedirect((int) $id, 'Esta tradução já possui 10 frases de exemplo.');
 
         $newSentences = generateAdditionalSentences($storedTranslation['word'], $storedTranslation['portugues'], $existingSentences, $missingSentences);
+        // The generation request can outlive MySQL's idle timeout.
+        $pdo = wordsDatabaseConnection();
         $pdo->beginTransaction();
         $insertSentence = $pdo->prepare('INSERT INTO frases (id_translation, frase_portugues, frase_ingles) VALUES (:id_translation, :frase_portugues, :frase_ingles)');
         foreach ($newSentences as $sentence) {
@@ -585,6 +604,8 @@ try {
         $storedWord = $wordStatement->fetchColumn();
         if (!is_string($storedWord)) translationsRedirect((int) $id, 'Palavra não encontrada.', 'error');
         $discovery = discoverTranslations($storedWord);
+        // Do not reuse the connection that sat idle while the AI responded.
+        $pdo = wordsDatabaseConnection();
         $pdo->beginTransaction();
         $insertExpression = $pdo->prepare('INSERT INTO words (word) VALUES (:word) ON DUPLICATE KEY UPDATE word = word');
         foreach ($discovery['relatedExpressions'] as $expression) {
