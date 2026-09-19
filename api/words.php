@@ -37,6 +37,25 @@ function normalizedWord(string $word): string
     return preg_replace('/\s+/u', ' ', trim($word)) ?? '';
 }
 
+/** @return list<array{frase_portugues: string, frase_ingles: string}> */
+function parseExternalSentences(string $value): array
+{
+    $pairs = preg_split('/\*/u', $value) ?: [];
+    $sentences = [];
+    foreach ($pairs as $pair) {
+        $parts = preg_split('/;/u', $pair, 2);
+        if (count($parts) !== 2) throw new RuntimeException('Separe cada frase em inglês da tradução com ponto e vírgula e cada par com asterisco.');
+        $english = preg_replace('/\s+/u', ' ', trim($parts[0])) ?? '';
+        $portuguese = preg_replace('/\s+/u', ' ', trim($parts[1])) ?? '';
+        if ($english === '' || $portuguese === '' || mb_strlen($english) > 2000 || mb_strlen($portuguese) > 2000 || preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', $english . $portuguese)) {
+            throw new RuntimeException('Informe frases em inglês e traduções em português válidas.');
+        }
+        $sentences[] = ['frase_portugues' => $portuguese, 'frase_ingles' => $english];
+    }
+    if ($sentences === []) throw new RuntimeException('Informe ao menos um par de frases.');
+    return $sentences;
+}
+
 function normalizeEnglishContractions(string $sentence): string
 {
     $sentence = preg_replace('/\s+/u', ' ', trim($sentence)) ?? '';
@@ -503,6 +522,7 @@ $word = normalizedWord((string) ($_POST['word'] ?? ''));
 $translation = normalizedWord((string) ($_POST['translation'] ?? ''));
 $englishSentence = preg_replace('/\s+/u', ' ', trim((string) ($_POST['english_sentence'] ?? ''))) ?? '';
 $portugueseSentence = preg_replace('/\s+/u', ' ', trim((string) ($_POST['portuguese_sentence'] ?? ''))) ?? '';
+$externalSentences = (string) ($_POST['external_sentences'] ?? '');
 $translationType = filter_var($_POST['translation_type'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 6]]);
 
 if (in_array($action, ['create', 'update'], true) && ($word === '' || mb_strlen($word) > 150 || preg_match('/[\x00-\x1F\x7F]/u', $word))) {
@@ -511,6 +531,7 @@ if (in_array($action, ['create', 'update'], true) && ($word === '' || mb_strlen(
 if (in_array($action, ['update', 'delete'], true) && !$id) wordsRedirect('Palavra inválida.', 'error');
 if ($action === 'discover' && !$id) wordsRedirect('Palavra inválida.', 'error');
 if ($action === 'generate_more' && (!$id || !$translationId)) wordsRedirect('Tradução inválida.', 'error');
+if ($action === 'import_external_sentences' && (!$id || !$translationId || trim($externalSentences) === '')) translationsRedirect((int) $id, 'Informe as frases para adicionar.', 'error');
 if ($action === 'manual_translation' && (!$id || $translation === '' || mb_strlen($translation) > 255 || preg_match('/[\x00-\x1F\x7F]/u', $translation) || !$translationType || $englishSentence === '' || $portugueseSentence === '' || mb_strlen($englishSentence) > 2000 || mb_strlen($portugueseSentence) > 2000 || preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', $englishSentence . $portugueseSentence))) translationsRedirect((int) $id, 'Informe uma tradução, a classe e as duas frases válidas.', 'error');
 if ($action === 'import_csv' && (!isset($_FILES['csv_file']) || !is_array($_FILES['csv_file']) || (int) ($_FILES['csv_file']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_uploaded_file((string) ($_FILES['csv_file']['tmp_name'] ?? '')))) wordsRedirect('Envie uma planilha CSV válida.', 'error');
 
@@ -555,6 +576,27 @@ try {
         $insertSentence->execute(['id_translation' => $existingTranslationId, 'frase_portugues' => $portugueseSentence, 'frase_ingles' => $englishSentence]);
         $pdo->commit();
         translationsRedirect((int) $id, 'Tradução e frase adicionadas com sucesso.');
+    }
+    if ($action === 'import_external_sentences') {
+        $translationStatement = $pdo->prepare('SELECT id FROM translations WHERE id = :translation_id AND id_word = :word_id');
+        $translationStatement->execute(['translation_id' => $translationId, 'word_id' => $id]);
+        if ($translationStatement->fetchColumn() === false) translationsRedirect((int) $id, 'Tradução não encontrada.', 'error');
+
+        $sentences = parseExternalSentences($externalSentences);
+        $countStatement = $pdo->prepare('SELECT COUNT(*) FROM frases WHERE id_translation = :translation_id');
+        $countStatement->execute(['translation_id' => $translationId]);
+        $availableSlots = max(0, 10 - (int) $countStatement->fetchColumn());
+        if (count($sentences) > $availableSlots) {
+            translationsRedirect((int) $id, 'Há espaço para somente ' . $availableSlots . ' frase' . ($availableSlots === 1 ? '' : 's') . ' nesta tradução.', 'error');
+        }
+
+        $pdo->beginTransaction();
+        $insertSentence = $pdo->prepare('INSERT INTO frases (id_translation, frase_portugues, frase_ingles) VALUES (:id_translation, :frase_portugues, :frase_ingles)');
+        foreach ($sentences as $sentence) {
+            $insertSentence->execute(['id_translation' => $translationId, ...$sentence]);
+        }
+        $pdo->commit();
+        translationsRedirect((int) $id, count($sentences) . ' frase' . (count($sentences) === 1 ? '' : 's') . ' adicionada' . (count($sentences) === 1 ? '' : 's') . ' com sucesso.');
     }
     if ($action === 'generate_more') {
         $translationStatement = $pdo->prepare('SELECT translations.id, words.word, translations.portugues FROM translations INNER JOIN words ON words.id = translations.id_word WHERE translations.id = :translation_id AND translations.id_word = :word_id');
